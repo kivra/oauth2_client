@@ -125,8 +125,8 @@ request(Method, Type, Url, Expect, Headers, Client) ->
     Body    :: body(),
     Client  :: #client{}.
 request(Method, Type, Url, Expect, Headers, Body, Client) ->
-    case do_request(Method, Type, Url, [401, Expect], Headers, Body, Client) of
-        {{ok, 401, _, _}, Client2} ->
+    case do_request(Method, Type, Url, Expect, Headers, Body, Client) of
+        {{_, 401, _, _}, Client2} ->
             {ok, Client3} = do_retrieve_access_token(Client2),
             do_request(Method, Type, Url, Expect, Headers, Body, Client3);
         Result -> Result
