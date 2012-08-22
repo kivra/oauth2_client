@@ -136,7 +136,7 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 %%% INTERNAL ===================================================================
 
 
-do_retrieve_access_token(Client) ->
+do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
     Payload = [
                {<<"grant_type">>, Client#client.grant_type}
                ,{<<"username">>, Client#client.id}
@@ -163,6 +163,28 @@ do_retrieve_access_token(Client) ->
                             ,refresh_token = RefreshToken
                             }
             end,
+            {ok, Result};
+        {error, _, _, Reason} ->
+            {error, Reason};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
+                                 id = Id, secret = Secret} = Client) ->
+    Payload = [{<<"grant_type">>, Client#client.grant_type}],
+    Auth = base64:encode(<<Id/binary, ":", Secret/binary>>),
+    Header = {"Authorization", <<"Basic ", Auth/binary>>},
+    case restc:request(post, percent, binary_to_list(Client#client.auth_url),
+                       [200], Header, Payload) of
+        {ok, _, _, Body} ->
+            AccessToken = proplists:get_value(<<"access_token">>, Body),
+            Result = #client{
+                             grant_type    = Client#client.grant_type
+                             ,auth_url     = Client#client.auth_url
+                             ,access_token = AccessToken
+                             ,id           = Client#client.id
+                             ,secret       = Client#client.secret
+                            },
             {ok, Result};
         {error, _, _, Reason} ->
             {error, Reason};
