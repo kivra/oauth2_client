@@ -68,7 +68,7 @@
 
 
 -spec retrieve_access_token(Type, URL, ID, Secret) ->
-    {ok, #client{}} | {error, Reason :: binary()} when
+    {ok, Headers::headers(), #client{}} | {error, Reason :: binary()} when
     Type   :: at_type(),
     URL    :: url(),
     ID     :: binary(),
@@ -143,7 +143,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                ,{<<"password">>, Client#client.secret}
               ],
     case restc:request(post, percent, binary_to_list(Client#client.auth_url), [200], [], Payload) of
-        {ok, _, _, Body} ->
+        {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
             Result = case RefreshToken of
@@ -163,7 +163,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                             ,refresh_token = RefreshToken
                             }
             end,
-            {ok, Result};
+            {ok, Headers, Result};
         {error, _, _, Reason} ->
             {error, Reason};
         {error, Reason} ->
@@ -176,7 +176,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
     Header = [{"Authorization", binary_to_list(<<"Basic ", Auth/binary>>)}],
     case restc:request(post, percent, binary_to_list(Client#client.auth_url),
                        [200], Header, Payload) of
-        {ok, _, _, Body} ->
+        {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             Result = #client{
                              grant_type    = Client#client.grant_type
@@ -185,7 +185,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                              ,id           = Client#client.id
                              ,secret       = Client#client.secret
                             },
-            {ok, Result};
+            {ok, Headers, Result};
         {error, _, _, Reason} ->
             {error, Reason};
         {error, Reason} ->
