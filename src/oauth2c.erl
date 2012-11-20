@@ -127,7 +127,7 @@ request(Method, Type, Url, Expect, Headers, Client) ->
 request(Method, Type, Url, Expect, Headers, Body, Client) ->
     case do_request(Method, Type, Url, Expect, Headers, Body, Client) of
         {{_, 401, _, _}, Client2} ->
-            {ok, Client3} = do_retrieve_access_token(Client2),
+            {ok, _RetrHeaders, Client3} = do_retrieve_access_token(Client2),
             do_request(Method, Type, Url, Expect, Headers, Body, Client3);
         Result -> Result
     end.
