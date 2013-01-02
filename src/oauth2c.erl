@@ -27,7 +27,7 @@
 -module(oauth2c).
 
 -export([
-         retrieve_access_token/4
+         retrieve_access_token/4, retrieve_access_token/5
          ,request/3
          ,request/4
          ,request/5
@@ -60,7 +60,8 @@
         access_token  = undefined :: binary(),
         refresh_token = undefined :: binary(),
         id            = undefined :: binary(),
-        secret        = undefined :: binary()
+        secret        = undefined :: binary(),
+        scope         = undefined :: binary()
 }).
 
 
@@ -74,11 +75,22 @@
     ID     :: binary(),
     Secret :: binary().
 retrieve_access_token(Type, Url, ID, Secret) ->
+    retrieve_access_token(Type, Url, ID, Secret, undefined).
+
+-spec retrieve_access_token(Type, URL, ID, Secret, Scope) ->
+    {ok, Headers::headers(), #client{}} | {error, Reason :: binary()} when
+    Type   :: at_type(),
+    URL    :: url(),
+    ID     :: binary(),
+    Secret :: binary(),
+    Scope  :: binary() | undefined.
+retrieve_access_token(Type, Url, ID, Secret, Scope) ->
     Client = #client{
                      grant_type = Type
                      ,auth_url  = Url
                      ,id        = ID
                      ,secret    = Secret
+                     ,scope     = Scope
                     },
     do_retrieve_access_token(Client).
 
@@ -137,11 +149,15 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 
 
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
-    Payload = [
-               {<<"grant_type">>, Client#client.grant_type}
-               ,{<<"username">>, Client#client.id}
-               ,{<<"password">>, Client#client.secret}
-              ],
+    Payload0 = [
+                {<<"grant_type">>, Client#client.grant_type}
+                ,{<<"username">>, Client#client.id}
+                ,{<<"password">>, Client#client.secret}
+               ],
+    Payload = case Client#client.scope of
+                 undefined -> Payload0;
+                 Scope -> [{<<"scope">>, Scope}|Payload0]
+              end,
     case restc:request(post, percent, binary_to_list(Client#client.auth_url), [200], [], Payload) of
         {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
@@ -154,6 +170,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                             ,access_token = AccessToken
                             ,id           = Client#client.id
                             ,secret       = Client#client.secret
+                            ,scope        = Client#client.scope
                             };
                 _ ->
                     #client{
@@ -161,6 +178,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                             ,auth_url      = Client#client.auth_url
                             ,access_token  = AccessToken
                             ,refresh_token = RefreshToken
+                            ,scope         = Client#client.scope
                             }
             end,
             {ok, Headers, Result};
@@ -171,7 +189,13 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
     end;
 do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                                  id = Id, secret = Secret} = Client) ->
-    Payload = [{<<"grant_type">>, Client#client.grant_type}],
+    Payload0 = [{<<"grant_type">>, Client#client.grant_type}],
+    Payload = case Client#client.scope of
+                  undefined ->
+                      Payload0;
+                  Scope ->
+                      [{<<"scope">>, Scope}|Payload0]
+              end,
     Auth = base64:encode(<<Id/binary, ":", Secret/binary>>),
     Header = [{"Authorization", binary_to_list(<<"Basic ", Auth/binary>>)}],
     case restc:request(post, percent, binary_to_list(Client#client.auth_url),
@@ -184,6 +208,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                              ,access_token = AccessToken
                              ,id           = Client#client.id
                              ,secret       = Client#client.secret
+                             ,scope        = Client#client.scope
                             },
             {ok, Headers, Result};
         {error, _, _, Reason} ->
