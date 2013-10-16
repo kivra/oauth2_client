@@ -159,7 +159,8 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                  Scope -> [{<<"scope">>, Scope}|Payload0]
               end,
     case restc:request(post, percent, binary_to_list(Client#client.auth_url), [200], [], Payload) of
-        {ok, _, Headers, Body} ->
+        {ok, _, Headers, RawBody} ->
+            Body = jsx:decode(RawBody),
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
             Result = case RefreshToken of
@@ -200,7 +201,8 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
     Header = [{"Authorization", binary_to_list(<<"Basic ", Auth/binary>>)}],
     case restc:request(post, percent, binary_to_list(Client#client.auth_url),
                        [200], Header, Payload) of
-        {ok, _, Headers, Body} ->
+        {ok, _, Headers, RawBody} ->
+            Body = jsx:decode(RawBody),
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             Result = #client{
                              grant_type    = Client#client.grant_type
