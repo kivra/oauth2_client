@@ -35,36 +35,36 @@
          ,request/7
         ]).
 
--type method()       :: head | get | put | post | trace | options | delete.
--type url()          :: binary().
--type at_type()      :: binary(). %% <<"password">> or <<"client_credentials">>
--type headers()      :: [header()].
--type header()       :: {binary(), binary()}.
--type status_codes() :: [status_code()].
--type status_code()  :: integer().
--type reason()       :: term().
--type content_type() :: json | xml | percent.
--type property()     :: atom() | tuple().
--type proplist()     :: [property()].
--type body()         :: proplist().
--type response()     :: {ok, Status::status_code(), Headers::headers(), Body::body()} |
-                        {error, Status::status_code(), Headers::headers(), Body::body()} |
-                        {error, Reason::reason()}.
--type token_type() :: bearer | unsupported.
-
 -define(DEFAULT_ENCODING, json).
 
 -record(client, {
-        grant_type    = undefined :: binary(),
-        auth_url      = undefined :: binary(),
-        access_token  = undefined :: binary(),
-        token_type    = undefined :: token_type(),
-        refresh_token = undefined :: binary(),
-        id            = undefined :: binary(),
-        secret        = undefined :: binary(),
-        scope         = undefined :: binary()
+        grant_type    = undefined :: binary() | undefined,
+        auth_url      = undefined :: binary() | undefined,
+        access_token  = undefined :: binary() | undefined,
+        token_type    = undefined :: token_type() | undefined,
+        refresh_token = undefined :: binary() | undefined,
+        id            = undefined :: binary() | undefined,
+        secret        = undefined :: binary() | undefined,
+        scope         = undefined :: binary() | undefined
 }).
 
+-type method()         :: head | get | put | post | trace | options | delete.
+-type url()            :: binary().
+-type at_type()        :: binary(). %% <<"password">> or <<"client_credentials">>
+-type headers()        :: [header()].
+-type header()         :: {binary(), binary()}.
+-type status_codes()   :: [status_code()].
+-type status_code()    :: integer().
+-type reason()         :: term().
+-type content_type()   :: json | xml | percent.
+-type property()       :: atom() | tuple().
+-type proplist()       :: [property()].
+-type body()           :: proplist().
+-type restc_response() :: {ok, Status::status_code(), Headers::headers(), Body::body()} |
+                          {error, Status::status_code(), Headers::headers(), Body::body()} |
+                          {error, Reason::reason()}.
+-type response()       :: {restc_response(), #client{}}.
+-type token_type()     :: bearer | unsupported.
 
 %%% API ========================================================================
 
