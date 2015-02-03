@@ -35,35 +35,36 @@
          ,request/7
         ]).
 
--type method()       :: head | get | put | post | trace | options | delete.
--type url()          :: binary().
--type at_type()      :: binary(). %% <<"password">> or <<"client_credentials">>
--type headers()      :: [header()].
--type header()       :: {binary(), binary()}.
--type status_codes() :: [status_code()].
--type status_code()  :: integer().
--type reason()       :: term().
--type content_type() :: json | xml | percent.
--type property()     :: atom() | tuple().
--type proplist()     :: [property()].
--type body()         :: proplist().
--type response()     :: {ok, Status::status_code(), Headers::headers(), Body::body()} |
-                        {error, Status::status_code(), Headers::headers(), Body::body()} |
-                        {error, Reason::reason()}.
-
-
 -define(DEFAULT_ENCODING, json).
 
 -record(client, {
-        grant_type    = undefined :: binary(),
-        auth_url      = undefined :: binary(),
-        access_token  = undefined :: binary(),
-        refresh_token = undefined :: binary(),
-        id            = undefined :: binary(),
-        secret        = undefined :: binary(),
-        scope         = undefined :: binary()
+        grant_type    = undefined :: binary() | undefined,
+        auth_url      = undefined :: binary() | undefined,
+        access_token  = undefined :: binary() | undefined,
+        token_type    = undefined :: token_type() | undefined,
+        refresh_token = undefined :: binary() | undefined,
+        id            = undefined :: binary() | undefined,
+        secret        = undefined :: binary() | undefined,
+        scope         = undefined :: binary() | undefined
 }).
 
+-type method()         :: head | get | put | post | trace | options | delete.
+-type url()            :: binary().
+-type at_type()        :: binary(). %% <<"password">> or <<"client_credentials">>
+-type headers()        :: [header()].
+-type header()         :: {binary(), binary()}.
+-type status_codes()   :: [status_code()].
+-type status_code()    :: integer().
+-type reason()         :: term().
+-type content_type()   :: json | xml | percent.
+-type property()       :: atom() | tuple().
+-type proplist()       :: [property()].
+-type body()           :: proplist().
+-type restc_response() :: {ok, Status::status_code(), Headers::headers(), Body::body()} |
+                          {error, Status::status_code(), Headers::headers(), Body::body()} |
+                          {error, Reason::reason()}.
+-type response()       :: {restc_response(), #client{}}.
+-type token_type()     :: bearer | unsupported.
 
 %%% API ========================================================================
 
@@ -202,10 +203,12 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                        [200], Header, Payload) of
         {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
+            TokenType = proplists:get_value(<<"token_type">>, Body, ""),
             Result = #client{
                              grant_type    = Client#client.grant_type
                              ,auth_url     = Client#client.auth_url
                              ,access_token = AccessToken
+                             ,token_type   = get_token_type(TokenType)
                              ,id           = Client#client.id
                              ,secret       = Client#client.secret
                              ,scope        = Client#client.scope
@@ -217,10 +220,23 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
             {error, Reason}
     end.
 
+-spec get_token_type(binary()) -> token_type().
+get_token_type(Type) ->
+    get_str_token_type(string:to_lower(binary_to_list(Type))).
+
+-spec get_str_token_type(string()) -> token_type().
+get_str_token_type("bearer") -> bearer;
+get_str_token_type(_Else) -> unsupported.
+
 do_request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Headers2 = add_auth_header(Headers, Client),
     {restc:request(Method, Type, binary_to_list(Url), Expect, Headers2, Body), Client}.
 
-add_auth_header(Headers, #client{access_token = AccessToken}) ->
-    AH = {"Authorization", binary_to_list(<<"token ", AccessToken/binary>>)},
+add_auth_header(Headers, #client{access_token = AccessToken, token_type = TokenType}) ->
+    Prefix = autorization_prefix(TokenType),
+    AH = {"Authorization", binary_to_list(<<Prefix/binary, " ", AccessToken/binary>>)},
     [AH | proplists:delete("Authorization", Headers)].
+
+-spec autorization_prefix(token_type()) -> binary().
+autorization_prefix(bearer) -> <<"Bearer">>;
+autorization_prefix(unsupported) -> <<"token">>.
