@@ -159,7 +159,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                  undefined -> Payload0;
                  Scope -> [{<<"scope">>, Scope}|Payload0]
               end,
-    case restc:request(post, percent, binary_to_list(Client#client.auth_url), [200], [], Payload) of
+    case restc:request(post, percent, Client#client.auth_url, [200], [], Payload) of
         {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
@@ -198,8 +198,8 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                       [{<<"scope">>, Scope}|Payload0]
               end,
     Auth = base64:encode(<<Id/binary, ":", Secret/binary>>),
-    Header = [{"Authorization", binary_to_list(<<"Basic ", Auth/binary>>)}],
-    case restc:request(post, percent, binary_to_list(Client#client.auth_url),
+    Header = [{<<"Authorization">>, <<"Basic ", Auth/binary>>}],
+    case restc:request(post, percent, Client#client.auth_url,
                        [200], Header, Payload) of
         {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
@@ -230,13 +230,8 @@ get_str_token_type(_Else) -> unsupported.
 
 do_request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Headers2 = add_auth_header(Headers, Client),
-    {restc:request(Method, Type, binary_to_list(Url), Expect, Headers2, Body), Client}.
+    {restc:request(Method, Type, Url, Expect, Headers2, Body), Client}.
 
-add_auth_header(Headers, #client{access_token = AccessToken, token_type = TokenType}) ->
-    Prefix = autorization_prefix(TokenType),
-    AH = {"Authorization", binary_to_list(<<Prefix/binary, " ", AccessToken/binary>>)},
-    [AH | proplists:delete("Authorization", Headers)].
-
--spec autorization_prefix(token_type()) -> binary().
-autorization_prefix(bearer) -> <<"Bearer">>;
-autorization_prefix(unsupported) -> <<"token">>.
+add_auth_header(Headers, #client{access_token = AccessToken}) ->
+    AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
+    [AH | proplists:delete(<<"Authorization">>, Headers)].

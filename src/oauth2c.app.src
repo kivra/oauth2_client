@@ -34,5 +34,6 @@
                   stdlib,
                   inets
                  ]},
-  {env, []}
+  {env, []},
+  {modules, []}
  ]}.
