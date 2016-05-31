@@ -2,7 +2,7 @@
 %%
 %% oauth2: Erlang OAuth 2.0 Client
 %%
-%% Copyright (c) 2012 KIVRA
+%% Copyright (c) 2012-2016 KIVRA
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -26,14 +26,15 @@
 
 -module(oauth2c).
 
--export([
-         retrieve_access_token/4, retrieve_access_token/5
-         ,request/3
-         ,request/4
-         ,request/5
-         ,request/6
-         ,request/7
-        ]).
+-export([retrieve_access_token/4]).
+-export([retrieve_access_token/5]).
+
+-export([request/3]).
+-export([request/4]).
+-export([request/5]).
+-export([request/6]).
+-export([request/7]).
+-export([request/8]).
 
 -define(DEFAULT_ENCODING, json).
 
@@ -59,6 +60,7 @@
 -type content_type()   :: json | xml | percent.
 -type property()       :: atom() | tuple().
 -type proplist()       :: [property()].
+-type options()        :: proplist().
 -type body()           :: proplist().
 -type restc_response() :: {ok, Status::status_code(), Headers::headers(), Body::body()} |
                           {error, Status::status_code(), Headers::headers(), Body::body()} |
@@ -67,8 +69,6 @@
 -type token_type()     :: bearer | unsupported.
 
 %%% API ========================================================================
-
-
 -spec retrieve_access_token(Type, URL, ID, Secret) ->
     {ok, Headers::headers(), #client{}} | {error, Reason :: binary()} when
     Type   :: at_type(),
@@ -138,17 +138,26 @@ request(Method, Type, Url, Expect, Headers, Client) ->
     Body    :: body(),
     Client  :: #client{}.
 request(Method, Type, Url, Expect, Headers, Body, Client) ->
-    case do_request(Method, Type, Url, Expect, Headers, Body, Client) of
+    request(Method, Type, Url, Expect, Headers, Body, [], Client).
+
+-spec request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
+        Response::response() when
+    Method  :: method(),
+    Type    :: content_type(),
+    Url     :: url(),
+    Expect  :: status_codes(),
+    Headers :: headers(),
+    Body    :: body(),
+    Options :: options(),
+    Client  :: #client{}.
+request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
+    case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
         {{_, 401, _, _}, Client2} ->
             {ok, _RetrHeaders, Client3} = do_retrieve_access_token(Client2),
-            do_request(Method, Type, Url, Expect, Headers, Body, Client3);
+            do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
         Result -> Result
     end.
-
-
 %%% INTERNAL ===================================================================
-
-
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
     Payload0 = [
                 {<<"grant_type">>, Client#client.grant_type}
@@ -228,9 +237,9 @@ get_token_type(Type) ->
 get_str_token_type("bearer") -> bearer;
 get_str_token_type(_Else) -> unsupported.
 
-do_request(Method, Type, Url, Expect, Headers, Body, Client) ->
+do_request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
     Headers2 = add_auth_header(Headers, Client),
-    {restc:request(Method, Type, Url, Expect, Headers2, Body), Client}.
+    {restc:request(Method, Type, Url, Expect, Headers2, Body, Options), Client}.
 
 add_auth_header(Headers, #client{access_token = AccessToken}) ->
     AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
