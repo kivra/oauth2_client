@@ -28,6 +28,7 @@
 
 -export([retrieve_access_token/4]).
 -export([retrieve_access_token/5]).
+-export([retrieve_access_token/6]).
 
 -export([request/3]).
 -export([request/4]).
@@ -39,14 +40,14 @@
 -define(DEFAULT_ENCODING, json).
 
 -record(client, {
-        grant_type    = undefined :: binary() | undefined,
-        auth_url      = undefined :: binary() | undefined,
-        access_token  = undefined :: binary() | undefined,
+        grant_type    = undefined :: binary()     | undefined,
+        auth_url      = undefined :: binary()     | undefined,
+        access_token  = undefined :: binary()     | undefined,
         token_type    = undefined :: token_type() | undefined,
-        refresh_token = undefined :: binary() | undefined,
-        id            = undefined :: binary() | undefined,
-        secret        = undefined :: binary() | undefined,
-        scope         = undefined :: binary() | undefined
+        refresh_token = undefined :: binary()     | undefined,
+        id            = undefined :: binary()     | undefined,
+        secret        = undefined :: binary()     | undefined,
+        scope         = undefined :: binary()     | undefined
 }).
 
 -type method()         :: head | get | put | post | trace | options | delete.
@@ -86,6 +87,17 @@ retrieve_access_token(Type, Url, ID, Secret) ->
     Secret :: binary(),
     Scope  :: binary() | undefined.
 retrieve_access_token(Type, Url, ID, Secret, Scope) ->
+    retrieve_access_token(Type, Url, ID, Secret, Scope, []).
+
+-spec retrieve_access_token(Type, URL, ID, Secret, Scope, Options) ->
+    {ok, Headers::headers(), #client{}} | {error, Reason :: binary()} when
+    Type    :: at_type(),
+    URL     :: url(),
+    ID      :: binary(),
+    Secret  :: binary(),
+    Scope   :: binary() | undefined,
+    Options :: list().
+retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
     Client = #client{
                      grant_type = Type
                      ,auth_url  = Url
@@ -93,7 +105,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope) ->
                      ,secret    = Secret
                      ,scope     = Scope
                     },
-    do_retrieve_access_token(Client).
+    do_retrieve_access_token(Client, Options).
 
 -spec request(Method, Url, Client) -> Response::response() when
     Method :: method(),
@@ -153,12 +165,12 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
     case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
         {{_, 401, _, _}, Client2} ->
-            {ok, _RetrHeaders, Client3} = do_retrieve_access_token(Client2),
+            {ok, _RetrHeaders, Client3} = do_retrieve_access_token(Client2, Options),
             do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
         Result -> Result
     end.
 %%% INTERNAL ===================================================================
-do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
+do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
     Payload0 = [
                 {<<"grant_type">>, Client#client.grant_type}
                 ,{<<"username">>, Client#client.id}
@@ -168,7 +180,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
                  undefined -> Payload0;
                  Scope -> [{<<"scope">>, Scope}|Payload0]
               end,
-    case restc:request(post, percent, Client#client.auth_url, [200], [], Payload) of
+    case restc:request(post, percent, Client#client.auth_url, [200], [], Payload, Opts) of
         {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
@@ -198,7 +210,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client) ->
             {error, Reason}
     end;
 do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
-                                 id = Id, secret = Secret} = Client) ->
+                                 id = Id, secret = Secret} = Client, Opts) ->
     Payload0 = [{<<"grant_type">>, Client#client.grant_type}],
     Payload = case Client#client.scope of
                   undefined ->
@@ -209,7 +221,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
     Auth = base64:encode(<<Id/binary, ":", Secret/binary>>),
     Header = [{<<"Authorization">>, <<"Basic ", Auth/binary>>}],
     case restc:request(post, percent, Client#client.auth_url,
-                       [200], Header, Payload) of
+                       [200], Header, Payload, Opts) of
         {ok, _, Headers, Body} ->
             AccessToken = proplists:get_value(<<"access_token">>, Body),
             TokenType = proplists:get_value(<<"token_type">>, Body, ""),
