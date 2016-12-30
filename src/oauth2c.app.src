@@ -32,7 +32,8 @@
   {applications, [
                   kernel,
                   stdlib,
-                  inets
+                  inets,
+                  restc
                  ]},
   {env, []},
   {modules, []}
