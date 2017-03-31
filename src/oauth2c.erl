@@ -239,6 +239,37 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
             {error, Reason};
         {error, Reason} ->
             {error, Reason}
+    end;
+do_retrieve_access_token(#client{grant_type = <<"azure_client_credentials">>,
+                                 id = Id, secret = Secret} = Client, Opts) ->
+    Payload0 = [{<<"grant_type">>, <<"client_credentials">>},
+                {<<"client_id">>, Id},
+                {<<"client_secret">>, Secret}],
+    Payload = case Client#client.scope of
+                  undefined ->
+                      Payload0;
+                  Scope ->
+                      [{<<"resource">>, Scope}|Payload0]
+              end,
+    case restc:request(post, percent, Client#client.auth_url,
+                       [200], [], Payload, Opts) of
+        {ok, _, Headers, Body} ->
+            AccessToken = proplists:get_value(<<"access_token">>, Body),
+            TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+            Result = #client{
+                             grant_type    = Client#client.grant_type
+                             ,auth_url     = Client#client.auth_url
+                             ,access_token = AccessToken
+                             ,token_type   = get_token_type(TokenType)
+                             ,id           = Client#client.id
+                             ,secret       = Client#client.secret
+                             ,scope        = Client#client.scope
+                            },
+            {ok, Headers, Result};
+        {error, _, _, Reason} ->
+            {error, Reason};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec get_token_type(binary()) -> token_type().
@@ -253,6 +284,10 @@ do_request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
     Headers2 = add_auth_header(Headers, Client),
     {restc:request(Method, Type, Url, Expect, Headers2, Body, Options), Client}.
 
+add_auth_header(Headers, #client{grant_type = <<"azure_client_credentials">>,
+                                 access_token = AccessToken}) ->
+    AH = {<<"Authorization">>, <<"bearer ", AccessToken/binary>>},
+    [AH | proplists:delete(<<"Authorization">>, Headers)];
 add_auth_header(Headers, #client{access_token = AccessToken}) ->
     AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
     [AH | proplists:delete(<<"Authorization">>, Headers)].
