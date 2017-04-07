@@ -24,6 +24,18 @@ Retrieve a client with access_token using Client Credentials Grant
 {ok, Headers, Client}
 ```
 
+**Microsoft Azure AD**: Since parameters are different please use `<<"azure_client_credentials">>` as `Type` when retrieving an access token for that service. Be sure to set a `Scope` if you want to access any of the connected APIs.
+
+```erlang
+2> oauth2c:retrieve_access_token(
+    <<"azure_client_credentials">>,
+    <<"some_tenant_specific_oauth_token_endpoint">>,
+    <<"some_registered_app_id">>,
+    <<"some_created_key">>,
+    <<"https://graph.microsoft.com">>).
+{ok, Headers, Client}
+```
+
 The Opaque `Client` object is to be used on subsequent requests like:
 
 ```erlang
