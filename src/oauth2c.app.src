@@ -27,7 +27,7 @@
 {application, oauth2c,
  [
   {description, "Erlang OAuth2 Client"},
-  {vsn, git},
+  {vsn, "1.0.0"},
   {registered, []},
   {applications, [
                   kernel,
@@ -36,5 +36,8 @@
                   restc
                  ]},
   {env, []},
-  {modules, []}
+  {modules, []},
+  {maintainers, ["Kivra"]},
+  {licenses, ["MIT"]},
+  {links, [{"Github", "https://github.com/kivra/oauth2_client"}]}
  ]}.
