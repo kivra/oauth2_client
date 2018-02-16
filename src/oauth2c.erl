@@ -50,7 +50,7 @@
         scope         = undefined :: binary()     | undefined
 }).
 
--type method()         :: head | get | put | post | trace | options | delete.
+-type method()         :: head | get | put | patch | post | trace | options | delete.
 -type url()            :: binary().
 -type at_type()        :: binary(). %% <<"password">> or <<"client_credentials">>
 -type headers()        :: [header()].
