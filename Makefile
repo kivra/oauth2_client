@@ -1,35 +1,22 @@
-REBAR=rebar
-DEPS_PLT=$(CURDIR)/.deps_plt
-DEPS=erts kernel crypto stdlib inets crypto asn1 public_key ssl
-
-all: deps compile
-
-deps: get-deps compile-all
-
-get-deps:
-	$(REBAR) get-deps
-
-compile-all:
-	$(REBAR) compile
+all: compile
 
 compile:
-	$(REBAR) skip_deps=true compile
-	$(REBAR) skip_deps=true xref
+	rebar3 compile
 
 clean:
-	$(REBAR) clean
+	rebar3 clean
 
-$(DEPS_PLT):
-	@echo Building local plt at $(DEPS_PLT)
-	@echo
-	dialyzer --output_plt $(DEPS_PLT) --build_plt --apps $(DEPS) -r deps
+xref:
+	rebar3 xref
 
-dialyzer: $(DEPS_PLT) compile
-	dialyzer --fullpath --plt $(DEPS_PLT) -Wrace_conditions -r ./ebin
+dialyze:
+	rebar3 dialyzer
 
-shell:
-	erl -pa deps/erlsom/ebin \
-            -pa deps/jsx/ebin \
-            -pa deps/mochiweb_util/ebin \
-            -pa deps/restc/ebin \
-	    -pa ebin
+upgrade:
+	rebar3 upgrade
+
+unlock:
+	rebar3 unlock
+
+lock:
+	rebar3 lock
