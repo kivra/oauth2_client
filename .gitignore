@@ -6,3 +6,4 @@ priv
 *.plt
 ebin
 _build
+.elvis
