@@ -1,35 +1,58 @@
-REBAR=rebar
-DEPS_PLT=$(CURDIR)/.deps_plt
-DEPS=erts kernel crypto stdlib inets crypto asn1 public_key ssl
+ELVIS_IN_PATH := $(shell elvis --version 2> /dev/null)
+ELVIS_LOCAL := $(shell .elvis/_build/default/bin/elvis --version 2> /dev/null)
 
-all: deps compile
-
-deps: get-deps compile-all
-
-get-deps:
-	$(REBAR) get-deps
-
-compile-all:
-	$(REBAR) compile
+all: compile
 
 compile:
-	$(REBAR) skip_deps=true compile
-	$(REBAR) skip_deps=true xref
+	rebar3 compile
 
 clean:
-	$(REBAR) clean
+	rebar3 clean
 
-$(DEPS_PLT):
-	@echo Building local plt at $(DEPS_PLT)
-	@echo
-	dialyzer --output_plt $(DEPS_PLT) --build_plt --apps $(DEPS) -r deps
+eunit:
+	rebar3 eunit
 
-dialyzer: $(DEPS_PLT) compile
-	dialyzer --fullpath --plt $(DEPS_PLT) -Wrace_conditions -r ./ebin
+ct:
+	rebar3 ct -v
 
-shell:
-	erl -pa deps/erlsom/ebin \
-            -pa deps/jsx/ebin \
-            -pa deps/mochiweb_util/ebin \
-            -pa deps/restc/ebin \
-	    -pa ebin
+xref:
+	rebar3 xref
+
+dialyze:
+	rebar3 dialyzer
+
+upgrade:
+	rebar3 upgrade
+
+unlock:
+	rebar3 unlock
+
+lock:
+	rebar3 lock
+
+elvis:
+ifdef ELVIS_IN_PATH
+	elvis git-branch origin/HEAD -V
+else ifdef ELVIS_LOCAL
+	.elvis/_build/default/bin/elvis git-branch origin/HEAD -V
+else
+	$(MAKE) compile_elvis
+	.elvis/_build/default/bin/elvis git-branch origin/HEAD -V
+endif
+
+elvis_rock:
+ifdef ELVIS_IN_PATH
+	elvis rock
+else ifdef ELVIS_LOCAL
+	.elvis/_build/default/bin/elvis rock
+else
+	$(MAKE) compile_elvis
+	.elvis/_build/default/bin/elvis rock
+endif
+
+compile_elvis:
+	git clone https://github.com/inaka/elvis.git .elvis && \
+	cd .elvis && \
+	rebar3 compile && \
+	rebar3 escriptize && \
+	cd ..

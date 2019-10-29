@@ -5,3 +5,5 @@ priv
 *.beam
 *.plt
 ebin
+_build
+.elvis
