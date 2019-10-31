@@ -26,6 +26,9 @@
 
 -module(oauth2c).
 
+-export([client/4]).
+-export([client/5]).
+
 -export([retrieve_access_token/4]).
 -export([retrieve_access_token/5]).
 -export([retrieve_access_token/6]).
@@ -85,6 +88,29 @@
 -type client()         :: #client{}.
 
 %%% API ========================================================================
+
+-spec client(Type, URL, ID, Secret) -> client() when
+    Type   :: at_type(),
+    URL    :: url(),
+    ID     :: binary(),
+    Secret :: binary().
+client(Type, URL, ID, Secret) ->
+  client(Type, URL, ID, Secret, undefined).
+
+-spec client(Type, URL, ID, Secret, Scope) -> client() when
+    Type   :: at_type(),
+    URL    :: url(),
+    ID     :: binary(),
+    Secret :: binary(),
+    Scope  :: binary() | undefined.
+client(Type, URL, ID, Secret, Scope) ->
+   #client{ grant_type = Type
+          , auth_url  = URL
+          , id        = ID
+          , secret    = Secret
+          , scope     = Scope
+          }.
+
 -spec retrieve_access_token(Type, URL, ID, Secret) ->
     {ok, Headers::headers(), client()} | {error, Reason :: binary()} when
     Type   :: at_type(),
@@ -301,9 +327,19 @@ get_token_type(Type) ->
 get_str_token_type("bearer") -> bearer;
 get_str_token_type(_Else) -> unsupported.
 
-do_request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
-  Headers2 = add_auth_header(Headers, Client),
+do_request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
+  {Headers2, Client} = add_auth_header(Headers, Client0, Options),
   {restc:request(Method, Type, Url, Expect, Headers2, Body, Options), Client}.
+
+add_auth_header(Headers0,
+                #client{access_token = undefined} = Client0,
+                Options) ->
+  {ok, _RetrHeaders, Client} = do_retrieve_access_token(Client0, Options),
+  Headers                    = add_auth_header(Headers0, Client),
+  {Headers, Client};
+add_auth_header(Headers0, Client, _) ->
+  Headers = add_auth_header(Headers0, Client),
+  {Headers, Client}.
 
 add_auth_header(Headers, #client{grant_type = <<"azure_client_credentials">>,
                                  access_token = AccessToken}) ->
