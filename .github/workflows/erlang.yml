@@ -14,8 +14,11 @@ jobs:
       run: make
     - name: Run xref
       run: make xref
+    - name: Run common tests
+      run: make ct
     - name: Run elvis
       run: make elvis_rock
+
 
   dialyze:
 
