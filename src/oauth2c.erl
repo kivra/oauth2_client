@@ -375,7 +375,7 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
   [AH | proplists:delete(<<"Authorization">>, Headers)].
 
 -spec get_cached_token(binary()) ->
-  atom() | {atom(), Headers::headers(), client()}.
+  atom() | {atom(), {Headers::headers(), client()}}.
 get_cached_token(Key) ->
   case whereis(oauth2c_token_cache_gen_server) of
     undefined ->
@@ -384,7 +384,7 @@ get_cached_token(Key) ->
       oauth2c_token_cache_gen_server:get(Key)
   end.
 
--spec create_token_key(binary(), binary(), binary()) -> binary().
+-spec create_token_key(binary(), binary(), binary() | atom()) -> binary().
 create_token_key(Type, Url, undefined) ->
   <<Type/binary, Url/binary>>;
 create_token_key(Type, Url, Scope) ->

@@ -126,7 +126,8 @@ get_token_test_() ->
           ?assert(is_integer(Timestamp))
         end, ok, Actual),
       % Check that cache contains the expected values,´
-      ?assertEqual(Expected, lists:map(fun({V, _}) -> V end, maps:values(Actual)))
+      ?assertEqual(Expected,
+        lists:map(fun({V, _}) -> V end, maps:values(Actual)))
     end
   ||
     {Input, Expected} <-[
