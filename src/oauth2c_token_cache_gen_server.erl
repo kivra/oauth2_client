@@ -95,4 +95,44 @@ get_token_if_not_expired(_Value, _TTL, _Now) ->
 
 %%%_ * Tests -------------------------------------------------------
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+get_token_test_() ->
+  [
+    fun() ->
+      {Cache, Key, TTL, Now} = Input,
+      Actual = get_token(Cache, Key, TTL, Now),
+      ?assertEqual(Expected, Actual)
+    end
+  ||
+    {Input, Expected} <-[
+      {{#{}, key, 0, 0}, not_found},
+      {{#{key => {token, 0}}, other_key, 100, 100}, not_found},
+      {{#{key => {token, 0}}, key, 100, 100}, token_expired},
+      {{#{key => {token, 0}}, key, 101, 100}, {ok, token}}
+    ]
+  ].
+
+  update_cache_test_() ->
+  [
+    fun() ->
+      {Cache, Key, Value} = Input,
+      Actual = update_cache(Cache, Key, Value),
+      % Check that each cache entry contains a timestamp
+      maps:fold(
+        fun(_, {V, Timestamp}, ok) ->
+          ?assert(is_atom(V)),
+          ?assert(is_integer(Timestamp))
+        end, ok, Actual),
+      % Check that cache contains the expected values,´
+      ?assertEqual(Expected, lists:map(fun({V, _}) -> V end, maps:values(Actual)))
+    end
+  ||
+    {Input, Expected} <-[
+      {{#{}, k1, v1}, [v1]},
+      {{#{k1 => {v1, 0}}, k2, v2}, [v1, v2]}
+    ]
+  ].
+
 -endif.
