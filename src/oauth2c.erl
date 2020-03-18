@@ -94,11 +94,11 @@
 %%% API ========================================================================
 
 start() ->
-    oauth2c_token_cache_gen_server:start().
+    oauth2c_token_cache:start().
 start(State) ->
-    oauth2c_token_cache_gen_server:start(State).
+    oauth2c_token_cache:start(State).
 stop() ->
-    oauth2c_token_cache_gen_server:stop().
+    oauth2c_token_cache:stop().
 
 -spec client(Type, URL, ID, Secret) -> client() when
     Type   :: at_type(),
@@ -166,7 +166,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
     not_found ->
       case do_retrieve_access_token(Client, Options) of
         {ok, Headers, Result} ->
-          oauth2c_token_cache_gen_server:insert(Key, {Headers, Result}),
+          oauth2c_token_cache:insert(Key, {Headers, Result}),
           {ok, Headers, Result};
         {error, Reason} ->
           {error, Reason}
@@ -382,11 +382,11 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
 -spec get_cached_token(binary()) ->
   atom() | {atom(), {Headers::headers(), client()}}.
 get_cached_token(Key) ->
-  case whereis(oauth2c_token_cache_gen_server) of
+  case whereis(oauth2c_token_cache) of
     undefined ->
       cache_server_not_started;
     _ ->
-      oauth2c_token_cache_gen_server:get(Key)
+      oauth2c_token_cache:get(Key)
   end.
 
 -spec create_token_key(binary(), binary(), binary() | atom()) -> binary().
