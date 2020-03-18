@@ -19,11 +19,8 @@
 
 %% gen_server
 -export([init/1]).
--export([terminate/2]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
--export([handle_info/2]).
--export([code_change/3]).
 
 %%%_* Includes =========================================================
 %%%_* Code =============================================================
@@ -58,22 +55,7 @@ handle_cast({insert, {Key, Value}}, State = #{cache := Cache}) ->
   {noreply, State#{cache := NewCache}};
 
 handle_cast({delete, Key}, State = #{cache := Cache}) ->
-  {noreply, State#{cache := maps:without([Key], Cache)}};
-
-handle_cast(stop, State) ->
-  {stop, normal, ok, State};
-
-handle_cast(_Msg, State) ->
-  {noreply, State}.
-
-handle_info(_Info, State) ->
-  {noreply, State}.
-
-terminate(_Reason, _State) ->
-  ok.
-
-code_change(_OldVsn, State, _Extra) ->
-  {ok, State}.
+  {noreply, State#{cache := maps:without([Key], Cache)}}.
 
 %%%_ * Private functions -----------------------------------------------
 
