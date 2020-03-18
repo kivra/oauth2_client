@@ -165,7 +165,13 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
     cache_server_not_started ->
       do_retrieve_access_token(Client, Options);
     not_found ->
-      do_retrieve_access_token(Client, Options)
+      case do_retrieve_access_token(Client, Options) of 
+        {ok, Headers, Result} ->
+          oauth2c_token_cache_gen_server:insert(Key, {Headers, Result}),
+          {ok, Headers, Result};
+        {error, Reason} ->
+          {error, Reason}
+      end
   end.
 
 -spec request(Method, Url, Client) -> Response::response() when
