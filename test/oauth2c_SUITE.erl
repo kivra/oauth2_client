@@ -17,6 +17,8 @@
 groups() -> [].
 
 all() -> [ retrieve_access_token
+         , retrieve_cached_access_token
+         , retrieve_cached_expired_access_token
          , fetch_access_token_on_request
          , fetch_access_token_on_request
          , fetch_new_token_on_401
@@ -26,10 +28,12 @@ init_per_suite(Config) -> Config.
 end_per_suite(_Config) -> ok.
 
 init_per_testcase(_TestCase, Config) ->
+  {ok, _Pid} = oauth2c:start(#{cache => #{}, cache_ttl => 100}),
   mock_http_requests(),
   Config.
 end_per_testcase(_TestCase, Config) ->
   meck:unload([restc]),
+  oauth2c:stop(),
   Config.
 
 retrieve_access_token(_Config) ->
@@ -38,6 +42,35 @@ retrieve_access_token(_Config) ->
                                            <<"ID">>,
                                            <<"SECRET">>),
   ?assertMatch({ok, _, _}, Response).
+
+retrieve_cached_access_token(_Config) ->
+  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                           ?AUTH_URL,
+                                           <<"ID">>,
+                                           <<"SECRET">>),
+  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                           ?AUTH_URL,
+                                           <<"ID">>,
+                                           <<"SECRET">>),
+  ?assertEqual(1, meck:num_calls(restc, request,
+                                [ post, percent,
+                                  ?AUTH_URL, '_', '_', '_', '_'
+                                ])).
+
+retrieve_cached_expired_access_token(_Config) ->
+    oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                           ?AUTH_URL,
+                                           <<"ID">>,
+                                           <<"SECRET">>),
+  timer:sleep(200),
+  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                           ?AUTH_URL,
+                                           <<"ID">>,
+                                           <<"SECRET">>),
+  ?assertEqual(2, meck:num_calls(restc, request,
+                                [ post, percent,
+                                  ?AUTH_URL, '_', '_', '_', '_'
+                                ])).
 
 fetch_access_token_and_do_request(_Config) ->
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
