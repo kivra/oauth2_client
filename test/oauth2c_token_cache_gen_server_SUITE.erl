@@ -17,7 +17,8 @@ end_per_suite(_Config) -> ok.
 init_per_testcase(_TestCase, Config) ->
   Now = os:system_time(millisecond),
   TTL = 3.6e6,
-  InitialState = #{cache => #{key1 => {token1, Now}, key2 => {token2, Now - TTL}}, cache_ttl => TTL},
+  InitialState = #{cache =>
+    #{key1 => {token1, Now}, key2 => {token2, Now - TTL}}, cache_ttl => TTL},
   oauth2c_token_cache_gen_server:start(InitialState),
   Config.
 end_per_testcase(_TestCase, Config) ->
@@ -31,7 +32,7 @@ get_token(_Config) ->
   ?assertMatch({ok, token1}, Res1),
   % Should not be found since token has expired
   ?assertEqual(not_found, Res2),
-  ?assertEqual(not_found, Res3). 
+  ?assertEqual(not_found, Res3).
 
 insert_token(_Config) ->
   oauth2c_token_cache_gen_server:insert(key3, token3),
@@ -42,9 +43,3 @@ delete_token(_Config) ->
   oauth2c_token_cache_gen_server:delete(key1),
   Res = oauth2c_token_cache_gen_server:get(key1),
   ?assertEqual(not_found, Res).
-
-
-
-
-
-  

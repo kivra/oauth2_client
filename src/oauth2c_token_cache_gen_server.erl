@@ -43,7 +43,7 @@ init(State) ->
   {ok, State}.
 
 handle_call({get, Key}, _From, State = #{cache := Cache, cache_ttl := TTL}) ->
-  case get_token(Cache, Key, TTL, os:system_time()) of
+  case get_token(Cache, Key, TTL, os:system_time(millisecond)) of
     {ok, Token} ->
       {reply, {ok, Token}, State};
     token_expired ->
@@ -78,7 +78,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 -spec update_cache(map(), atom(), any()) -> map().
 update_cache(Cache, Key, Value) ->
-  Cache#{Key => {Value, os:system_time()}}.
+  Cache#{Key => {Value, os:system_time(millisecond)}}.
 
 -spec get_token(map(), atom(), integer(), integer())
   -> atom() | {atom(), any()}.
