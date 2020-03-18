@@ -428,7 +428,6 @@ get_cached_token_test_() ->
 
 -endif.
 
-
 %%%_* Emacs ============================================================
 %%% Local Variables:
 %%% allout-layout: t

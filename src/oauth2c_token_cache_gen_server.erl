@@ -30,7 +30,8 @@
 %%%_ * Types -----------------------------------------------------------
 %%%_ * API -------------------------------------------------------------
 
-start() -> start(#{cache_ttl => 3600000, cache => #{}}).
+start() -> start(#{
+  cache_ttl => 3600000, cache => #{}}).
 start(State) -> gen_server:start_link({local, ?MODULE}, ?MODULE, State, []).
 stop() -> gen_server:cast(?MODULE, stop).
 get(Key) -> gen_server:call(?MODULE, {get, Key}).
