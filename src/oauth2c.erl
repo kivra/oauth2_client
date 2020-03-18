@@ -26,6 +26,10 @@
 
 -module(oauth2c).
 
+-export([start/1]).
+-export([start/0]).
+-export([stop/0]).
+
 -export([client/4]).
 -export([client/5]).
 
@@ -89,6 +93,14 @@
 
 %%% API ========================================================================
 
+start() ->
+    start(3600000).
+start(CacheEntryTTL) ->
+    oauth2c_token_cache_gen_server:start(#{cache => #{},
+                                           cache_ttl => CacheEntryTTL}).
+stop() ->
+    oauth2c_token_cache_gen_server:stop().
+
 -spec client(Type, URL, ID, Secret) -> client() when
     Type   :: at_type(),
     URL    :: url(),
@@ -146,7 +158,15 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
              ,secret    = Secret
              ,scope     = Scope
              },
-  do_retrieve_access_token(Client, Options).
+  Key = create_token_key(Type, Url, Scope),
+  case get_cached_token(Key) of
+    {ok, {Header, Response}} ->
+      {ok, Header, Response};
+    cache_server_not_started ->
+      do_retrieve_access_token(Client, Options);
+    not_found ->
+      do_retrieve_access_token(Client, Options)
+  end.
 
 -spec request(Method, Url, Client) -> Response::response() when
     Method :: method(),
@@ -214,6 +234,7 @@ request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
     Result -> Result
   end.
 %%% INTERNAL ===================================================================
+
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
   Payload0 = [
               {<<"grant_type">>, Client#client.grant_type}
@@ -352,6 +373,56 @@ add_auth_header(Headers, #client{token_type = bearer,
 add_auth_header(Headers, #client{access_token = AccessToken}) ->
   AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
   [AH | proplists:delete(<<"Authorization">>, Headers)].
+
+-spec get_cached_token(binary()) ->
+  atom() | {atom(), Headers::headers(), client()}.
+get_cached_token(Key) ->
+  case whereis(oauth2c_token_cache_gen_server) of
+    undefined ->
+      cache_server_not_started;
+    _ ->
+      oauth2c_token_cache_gen_server:get(Key)
+  end.
+
+-spec create_token_key(binary(), binary(), binary()) -> binary().
+create_token_key(Type, Url, undefined) ->
+  <<Type/binary, Url/binary>>;
+create_token_key(Type, Url, Scope) ->
+  <<Type/binary, Url/binary, Scope/binary>>.
+
+%%%_ * Tests -------------------------------------------------------
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+create_token_key_test_() ->
+    [
+        fun() ->
+            {Type, Url, Scope} = Input,
+            Actual = create_token_key(Type, Url, Scope),
+            ?assertEqual(Expected, Actual)
+        end
+    ||
+        {Input, Expected} <-[
+            {{<<"123">>, <<"456">>, undefined}, <<"123456">>},
+            {{<<"123">>, <<"456">>, <<"789">>}, <<"123456789">>}
+        ]
+    ].
+
+get_cached_token_test_() ->
+  [
+      fun() ->
+          Actual = get_cached_token(Input),
+          ?assertEqual(Expected, Actual)
+      end
+  ||
+      {Input, Expected} <-[
+          {input, cache_server_not_started}
+      ]
+  ].
+
+-endif.
+
 
 %%%_* Emacs ============================================================
 %%% Local Variables:
