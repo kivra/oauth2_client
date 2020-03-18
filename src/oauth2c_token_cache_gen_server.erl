@@ -76,15 +76,20 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%%_ * Private functions -----------------------------------------------
 
+-spec update_cache(map(), atom(), any()) -> map().
 update_cache(Cache, Key, Value) ->
   Cache#{Key => {Value, os:system_time()}}.
 
+-spec get_token(map(), atom(), integer(), integer())
+  -> atom() | {atom(), any()}.
 get_token(Cache, Key, TTL, Now) ->
   case maps:is_key(Key, Cache) of
     true -> get_token_if_not_expired(maps:get(Key, Cache), TTL, Now);
     false -> not_found
   end.
 
+-spec get_token_if_not_expired({any(), integer()}, integer(), integer())
+  -> atom() | {ok, atom()}.
 % Token exist and is valid.
 get_token_if_not_expired({Token, CreatedAt}, TTL, Now)
   when (Now - CreatedAt) < TTL ->
