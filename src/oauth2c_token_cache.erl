@@ -68,11 +68,9 @@ get_token(Cache, Key, TTL, Now) ->
     false -> not_found
   end.
 
-% Token exist and is valid.
 get_token_if_not_expired({Token, CreatedAt}, TTL, Now)
   when (Now - CreatedAt) < TTL ->
   {ok, Token};
-% Token exist but has expired.
 get_token_if_not_expired(_Value, _TTL, _Now) ->
   token_expired.
 
