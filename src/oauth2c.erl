@@ -94,10 +94,9 @@
 %%% API ========================================================================
 
 start() ->
-    start(3600000).
-start(CacheEntryTTL) ->
-    oauth2c_token_cache_gen_server:start(#{cache => #{},
-                                           cache_ttl => CacheEntryTTL}).
+    oauth2c_token_cache_gen_server:start().
+start(State) ->
+    oauth2c_token_cache_gen_server:start(State).
 stop() ->
     oauth2c_token_cache_gen_server:stop().
 
