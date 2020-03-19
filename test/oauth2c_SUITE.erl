@@ -24,16 +24,17 @@ all() -> [ retrieve_access_token
          , fetch_new_token_on_401
          ].
 
-init_per_suite(Config) -> Config.
+init_per_suite(Config) -> 
+  {ok, _Pid} = oauth2c_token_cache:start(),
+  Config.
 end_per_suite(_Config) -> ok.
 
 init_per_testcase(_TestCase, Config) ->
-  {ok, _Pid} = oauth2c:start(#{cache => #{}, cache_ttl => 100}),
   mock_http_requests(),
   Config.
 end_per_testcase(_TestCase, Config) ->
   meck:unload([restc]),
-  oauth2c:stop(),
+  oauth2c_token_cache:clear(),
   Config.
 
 retrieve_access_token(_Config) ->
@@ -58,6 +59,7 @@ retrieve_cached_access_token(_Config) ->
                                 ])).
 
 retrieve_cached_expired_access_token(_Config) ->
+    oauth2c_token_cache:set_ttl(100),
     oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
@@ -70,7 +72,8 @@ retrieve_cached_expired_access_token(_Config) ->
   ?assertEqual(2, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
-                                ])).
+                                ])),
+    oauth2c_token_cache:set_ttl(3.6e6).
 
 fetch_access_token_and_do_request(_Config) ->
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
@@ -126,8 +129,8 @@ mock_http_requests() ->
                   end
               end).
 
-%%%_* Editor ===================================================================
-%%% Local Variables:
-%%% allout-layout: t
-%%% erlang-indent-level: 2
-%%% End:
+%_* Editor ===================================================================
+% Local Variables:
+% allout-layout: t
+% erlang-indent-level: 2
+% End:
