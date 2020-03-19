@@ -24,7 +24,7 @@ all() -> [ retrieve_access_token
          , fetch_new_token_on_401
          ].
 
-init_per_suite(Config) -> 
+init_per_suite(Config) ->
   {ok, _Pid} = oauth2c_token_cache:start(),
   Config.
 end_per_suite(_Config) -> ok.

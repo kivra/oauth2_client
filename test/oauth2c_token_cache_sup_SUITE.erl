@@ -19,11 +19,9 @@ test_sup(_Config) ->
   ?assertEqual(undefined, whereis(oauth2c_token_cache_sup)),
   {ok, SupPid} = oauth2c_token_cache_sup:start_link(),
   ?assertEqual(true, is_process_alive(whereis(oauth2c_token_cache))),
-	process_flag(trap_exit, true),
+  process_flag(trap_exit, true),
   exit(SupPid, shutdown),
-  receive 
-		{'EXIT', _, shutdown} -> 
+  receive
+    {'EXIT', _, shutdown} ->
       ?assertEqual(undefined, whereis(oauth2c_token_cache))
   end.
-  
-

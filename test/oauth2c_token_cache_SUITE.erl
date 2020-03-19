@@ -12,13 +12,13 @@ all() -> [
   delete_token
 ].
 
-init_per_suite(Config) -> 
+init_per_suite(Config) ->
   {ok, _Pid} = oauth2c_token_cache:start(),
   Config.
 
 end_per_suite(_Config) -> ok.
 
-init_per_testcase(TestCase, Config) -> 
+init_per_testcase(TestCase, Config) ->
   ?MODULE:TestCase({init, Config}),
   Config.
 
@@ -56,7 +56,7 @@ insert_token(_Config) ->
   ?assertMatch(not_found, Res1),
   ?assertMatch({ok, token}, Res2).
 
-delete_token({init, _Config}) -> 
+delete_token({init, _Config}) ->
     oauth2c_token_cache:insert(?FUNCTION_NAME, token);
 delete_token({'end', _Config}) -> ok;
 delete_token(_Config) ->

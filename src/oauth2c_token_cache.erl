@@ -32,10 +32,12 @@
 %%%_ * API -------------------------------------------------------------
 
 start() -> start(#{cache_ttl => 3600000, cache => #{}}).
-start(State) -> gen_server:start({local, ?MODULE}, ?MODULE, State, []).
+start(State) ->
+  gen_server:start({local, ?MODULE}, ?MODULE, State, []).
 
 start_link() -> start_link(#{cache_ttl => 3600000, cache => #{}}).
-start_link(State) -> gen_server:start_link({local, ?MODULE}, ?MODULE, State, []).
+start_link(State) ->
+  gen_server:start_link({local, ?MODULE}, ?MODULE, State, []).
 
 get(Key) -> gen_server:call(?MODULE, {get, Key}).
 insert(Key, Value) -> gen_server:cast(?MODULE, {insert, {Key, Value}}).
