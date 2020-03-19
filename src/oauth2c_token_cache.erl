@@ -18,6 +18,8 @@
 -export([get/1]).
 -export([insert/2]).
 -export([delete/1]).
+-export([set_ttl/1]).
+-export([clear/0]).
 
 %% gen_server
 -export([init/1]).
@@ -38,6 +40,8 @@ start_link(State) -> gen_server:start_link({local, ?MODULE}, ?MODULE, State, [])
 get(Key) -> gen_server:call(?MODULE, {get, Key}).
 insert(Key, Value) -> gen_server:cast(?MODULE, {insert, {Key, Value}}).
 delete(Key) -> gen_server:cast(?MODULE, {delete, Key}).
+set_ttl(NewTTL) -> gen_server:cast(?MODULE, {set_ttl, NewTTL}).
+clear() -> gen_server:cast(?MODULE, clear).
 
 %%%_ * gen_server callbacks --------------------------------------------
 
@@ -59,7 +63,13 @@ handle_cast({insert, {Key, Value}}, State = #{cache := Cache}) ->
   {noreply, State#{cache := NewCache}};
 
 handle_cast({delete, Key}, State = #{cache := Cache}) ->
-  {noreply, State#{cache := maps:without([Key], Cache)}}.
+  {noreply, State#{cache := maps:without([Key], Cache)}};
+
+handle_cast({set_ttl, NewTTL}, State) ->
+  {noreply, State#{cache_ttl := NewTTL}};
+
+handle_cast(clear, State) ->
+  {noreply, State#{cache := #{}}}.
 
 %%%_ * Private functions -----------------------------------------------
 
