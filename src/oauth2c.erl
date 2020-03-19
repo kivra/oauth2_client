@@ -26,10 +26,6 @@
 
 -module(oauth2c).
 
--export([start/1]).
--export([start/0]).
--export([stop/0]).
-
 -export([client/4]).
 -export([client/5]).
 
@@ -92,13 +88,6 @@
 -type client()         :: #client{}.
 
 %%% API ========================================================================
-
-start() ->
-    oauth2c_token_cache:start().
-start(State) ->
-    oauth2c_token_cache:start(State).
-stop() ->
-    oauth2c_token_cache:stop().
 
 -spec client(Type, URL, ID, Secret) -> client() when
     Type   :: at_type(),
