@@ -13,10 +13,13 @@ all() -> [
 ].
 
 init_per_suite(Config) ->
-  {ok, _Pid} = oauth2c_token_cache:start(),
-  Config.
+  {ok, Pid} = oauth2c_token_cache:start(),
+  [{pid, Pid}|Config].
 
-end_per_suite(_Config) -> ok.
+end_per_suite(Config) ->
+  {pid, Pid} = proplists:lookup(pid, Config),
+  exit(Pid, shutdown),
+  ok.
 
 init_per_testcase(TestCase, Config) ->
   ?MODULE:TestCase({init, Config}),
