@@ -7,39 +7,61 @@
 
 all() -> [
   get_token,
+  get_expired_token,
   insert_token,
   delete_token
 ].
 
-init_per_suite(Config) -> Config.
+init_per_suite(Config) -> 
+  {ok, _Pid} = oauth2c_token_cache:start(),
+  Config.
+
 end_per_suite(_Config) -> ok.
 
-init_per_testcase(_TestCase, Config) ->
-  Now = os:system_time(millisecond),
-  TTL = 3.6e6,
-  InitialState = #{cache =>
-    #{key1 => {token1, Now}, key2 => {token2, Now - TTL}}, cache_ttl => TTL},
-  oauth2c_token_cache:start(InitialState),
-  Config.
-end_per_testcase(_TestCase, Config) ->
-  oauth2c_token_cache:stop(),
+init_per_testcase(TestCase, Config) -> 
+  ?MODULE:TestCase({init, Config}),
   Config.
 
+end_per_testcase(TestCase, Config) ->
+  ?MODULE:TestCase({'end', Config}),
+  Config.
+
+get_token({init, _Config}) ->
+  oauth2c_token_cache:insert(?FUNCTION_NAME, token);
+get_token({'end', _Config}) ->
+  oauth2c_token_cache:delete(?FUNCTION_NAME);
 get_token(_Config) ->
-  Res1 = oauth2c_token_cache:get(key1),
-  Res2 = oauth2c_token_cache:get(key2),
-  Res3 = oauth2c_token_cache:get(bad_key),
-  ?assertMatch({ok, token1}, Res1),
-  % Should not be found since token has expired
-  ?assertEqual(not_found, Res2),
-  ?assertEqual(not_found, Res3).
+  Res = oauth2c_token_cache:get(?FUNCTION_NAME),
+  ?assertMatch({ok, token}, Res).
 
+get_expired_token({init, _Config}) ->
+  oauth2c_token_cache:set_ttl(100),
+  oauth2c_token_cache:insert(?FUNCTION_NAME, token);
+get_expired_token({'end', _Config}) ->
+  oauth2c_token_cache:set_ttl(3.6e6),
+  oauth2c_token_cache:delete(?FUNCTION_NAME);
+get_expired_token(_Config) ->
+  % Trying to fetch an expired token should return not found.
+  timer:sleep(100),
+  Res = oauth2c_token_cache:get(?FUNCTION_NAME),
+  ?assertMatch(not_found, Res).
+
+insert_token({init, _Config}) -> ok;
+insert_token({'end', _Config}) ->
+  oauth2c_token_cache:delete(?FUNCTION_NAME);
 insert_token(_Config) ->
-  oauth2c_token_cache:insert(key3, token3),
-  Res = oauth2c_token_cache:get(key3),
-  ?assertMatch({ok, token3}, Res).
+  Res1 = oauth2c_token_cache:get(?FUNCTION_NAME),
+  oauth2c_token_cache:insert(?FUNCTION_NAME, token),
+  Res2 = oauth2c_token_cache:get(?FUNCTION_NAME),
+  ?assertMatch(not_found, Res1),
+  ?assertMatch({ok, token}, Res2).
 
+delete_token({init, _Config}) -> 
+    oauth2c_token_cache:insert(?FUNCTION_NAME, token);
+delete_token({'end', _Config}) -> ok;
 delete_token(_Config) ->
-  oauth2c_token_cache:delete(key1),
-  Res = oauth2c_token_cache:get(key1),
-  ?assertEqual(not_found, Res).
+  Res1 = oauth2c_token_cache:get(?FUNCTION_NAME),
+  oauth2c_token_cache:delete(?FUNCTION_NAME),
+  Res2 = oauth2c_token_cache:get(?FUNCTION_NAME),
+  ?assertMatch({ok, token}, Res1),
+  ?assertMatch(not_found, Res2).
