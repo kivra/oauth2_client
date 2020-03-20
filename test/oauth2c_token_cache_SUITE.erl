@@ -38,14 +38,11 @@ get_token(_Config) ->
   ?assertMatch({ok, token}, Res).
 
 get_expired_token({init, _Config}) ->
-  oauth2c_token_cache:set_ttl(100),
-  oauth2c_token_cache:insert(?FUNCTION_NAME, token);
+  oauth2c_token_cache:insert(?FUNCTION_NAME, token, os:system_time(second) - 1);
 get_expired_token({'end', _Config}) ->
-  oauth2c_token_cache:set_ttl(3.6e6),
   oauth2c_token_cache:delete(?FUNCTION_NAME);
 get_expired_token(_Config) ->
   % Trying to fetch an expired token should return not found.
-  timer:sleep(100),
   Res = oauth2c_token_cache:get(?FUNCTION_NAME),
   ?assertMatch(not_found, Res).
 

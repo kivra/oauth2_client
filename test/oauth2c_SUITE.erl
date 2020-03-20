@@ -62,12 +62,12 @@ retrieve_cached_access_token(_Config) ->
                                 ])).
 
 retrieve_cached_expired_access_token(_Config) ->
-    oauth2c_token_cache:set_ttl(100),
+    oauth2c_token_cache:set_default_ttl(1),
     oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
                                            <<"SECRET">>),
-  timer:sleep(200),
+  timer:sleep(1050),
   oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
@@ -76,7 +76,7 @@ retrieve_cached_expired_access_token(_Config) ->
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
                                 ])),
-    oauth2c_token_cache:set_ttl(3.6e6).
+    oauth2c_token_cache:set_default_ttl(3600).
 
 fetch_access_token_and_do_request(_Config) ->
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
