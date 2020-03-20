@@ -17,8 +17,9 @@
 -export([start_link/1]).
 -export([get/1]).
 -export([insert/2]).
+-export([insert/3]).
 -export([delete/1]).
--export([set_ttl/1]).
+-export([set_default_ttl/1]).
 -export([clear/0]).
 
 %% gen_server
@@ -26,23 +27,32 @@
 -export([handle_call/3]).
 -export([handle_cast/2]).
 
+-define(DEFAULT_TTL, 3600). % Default cache entry TTL in seconds.
+
 %%%_* Includes =========================================================
 %%%_* Code =============================================================
 %%%_ * Types -----------------------------------------------------------
 %%%_ * API -------------------------------------------------------------
 
-start() -> start(#{cache_ttl => 3600000, cache => #{}}).
+start() -> start(#{default_cache_ttl => ?DEFAULT_TTL, cache => #{}}).
 start(State) ->
   gen_server:start({local, ?MODULE}, ?MODULE, State, []).
 
-start_link() -> start_link(#{cache_ttl => 3600000, cache => #{}}).
+start_link() -> start_link(#{default_cache_ttl => ?DEFAULT_TTL, cache => #{}}).
 start_link(State) ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, State, []).
 
 get(Key) -> gen_server:call(?MODULE, {get, Key}).
-insert(Key, Value) -> gen_server:cast(?MODULE, {insert, {Key, Value}}).
+
+insert(Key, Value) ->
+  gen_server:cast(?MODULE, {insert, {Key, Value}, undefined}).
+insert(Key, Value, ExpireTime) ->
+  gen_server:cast(?MODULE, {insert, {Key, Value}, ExpireTime}).
+
 delete(Key) -> gen_server:cast(?MODULE, {delete, Key}).
-set_ttl(NewTTL) -> gen_server:cast(?MODULE, {set_ttl, NewTTL}).
+
+set_default_ttl(NewTTL) -> gen_server:cast(?MODULE, {set_default_ttl, NewTTL}).
+
 clear() -> gen_server:cast(?MODULE, clear).
 
 %%%_ * gen_server callbacks --------------------------------------------
@@ -50,8 +60,8 @@ clear() -> gen_server:cast(?MODULE, clear).
 init(State) ->
   {ok, State}.
 
-handle_call({get, Key}, _From, State = #{cache := Cache, cache_ttl := TTL}) ->
-  case get_token(Cache, Key, TTL, os:system_time(millisecond)) of
+handle_call({get, Key}, _From, State = #{cache := Cache}) ->
+  case get_token(Cache, Key, os:system_time(second)) of
     {ok, Token} ->
       {reply, {ok, Token}, State};
     token_expired ->
@@ -60,34 +70,38 @@ handle_call({get, Key}, _From, State = #{cache := Cache, cache_ttl := TTL}) ->
       {reply, not_found, State}
   end.
 
-handle_cast({insert, {Key, Value}}, State = #{cache := Cache}) ->
-  NewCache = update_cache(Cache, Key, Value),
+handle_cast({insert, {Key, Value}, undefined},
+  State = #{cache := Cache, default_cache_ttl := TTL}) ->
+  NewCache = Cache#{Key => {Value, os:system_time(second) + TTL}},
+  {noreply, State#{cache := NewCache}};
+handle_cast({insert, {Key, Value}, ExpireTime}, State = #{cache := Cache}) ->
+  NewCache = Cache#{Key => {Value, ExpireTime}},
   {noreply, State#{cache := NewCache}};
 
 handle_cast({delete, Key}, State = #{cache := Cache}) ->
-  {noreply, State#{cache := maps:without([Key], Cache)}};
+  {noreply, State#{cache := maps:remove(Key, Cache)}};
 
-handle_cast({set_ttl, NewTTL}, State) ->
-  {noreply, State#{cache_ttl := NewTTL}};
+handle_cast({set_default_ttl, NewTTL}, State) ->
+  {noreply, State#{default_cache_ttl := NewTTL}};
 
 handle_cast(clear, State) ->
   {noreply, State#{cache := #{}}}.
 
 %%%_ * Private functions -----------------------------------------------
 
-update_cache(Cache, Key, Value) ->
-  Cache#{Key => {Value, os:system_time(millisecond)}}.
+%update_cache(Cache, Key, Value, ExpireTime) ->
+%  Cache#{Key => {Value, os:system_time(second)}}.
 
-get_token(Cache, Key, TTL, Now) ->
+get_token(Cache, Key, Now) ->
   case maps:is_key(Key, Cache) of
-    true -> get_token_if_not_expired(maps:get(Key, Cache), TTL, Now);
+    true -> get_token_if_not_expired(maps:get(Key, Cache), Now);
     false -> not_found
   end.
 
-get_token_if_not_expired({Token, CreatedAt}, TTL, Now)
-  when (Now - CreatedAt) < TTL ->
+get_token_if_not_expired({Token, ExpireTime}, Now)
+  when ExpireTime > Now ->
   {ok, Token};
-get_token_if_not_expired(_Value, _TTL, _Now) ->
+get_token_if_not_expired(_Value, _Now) ->
   token_expired.
 
 %%%_ * Tests -------------------------------------------------------
@@ -98,39 +112,39 @@ get_token_if_not_expired(_Value, _TTL, _Now) ->
 get_token_test_() ->
   [
     fun() ->
-      {Cache, Key, TTL, Now} = Input,
-      Actual = get_token(Cache, Key, TTL, Now),
+      {Cache, Key, Now} = Input,
+      Actual = get_token(Cache, Key, Now),
       ?assertEqual(Expected, Actual)
     end
   ||
     {Input, Expected} <-[
-      {{#{}, key, 0, 0}, not_found},
-      {{#{key => {token, 0}}, other_key, 100, 100}, not_found},
-      {{#{key => {token, 0}}, key, 100, 100}, token_expired},
-      {{#{key => {token, 0}}, key, 101, 100}, {ok, token}}
+      {{#{}, key, 0}, not_found},
+      {{#{key => {token, 0}}, other_key, 100}, not_found},
+      {{#{key => {token, 99}}, key, 100}, token_expired},
+      {{#{key => {token, 101}}, key, 100}, {ok, token}}
     ]
   ].
 
-  update_cache_test_() ->
-  [
-    fun() ->
-      {Cache, Key, Value} = Input,
-      Actual = update_cache(Cache, Key, Value),
-      % Check that each cache entry contains a timestamp
-      maps:fold(
-        fun(_, {V, Timestamp}, ok) ->
-          ?assert(is_atom(V)),
-          ?assert(is_integer(Timestamp))
-        end, ok, Actual),
-      % Check that cache contains the expected values,´
-      ?assertEqual(Expected,
-        lists:map(fun({V, _}) -> V end, maps:values(Actual)))
-    end
-  ||
-    {Input, Expected} <-[
-      {{#{}, k1, v1}, [v1]},
-      {{#{k1 => {v1, 0}}, k2, v2}, [v1, v2]}
-    ]
-  ].
+%  update_cache_test_() ->
+%  [
+%    fun() ->
+%      {Cache, Key, Value} = Input,
+%      Actual = update_cache(Cache, Key, Value),
+%      % Check that each cache entry contains a timestamp
+%      maps:fold(
+%        fun(_, {V, Timestamp}, ok) ->
+%          ?assert(is_atom(V)),
+%          ?assert(is_integer(Timestamp))
+%        end, ok, Actual),
+%      % Check that cache contains the expected values,´
+%      ?assertEqual(Expected,
+%        lists:map(fun({V, _}) -> V end, maps:values(Actual)))
+%    end
+%  ||
+%    {Input, Expected} <-[
+%      {{#{}, k1, v1}, [v1]},
+%      {{#{k1 => {v1, 0}}, k2, v2}, [v1, v2]}
+%    ]
+%  ].
 
 -endif.

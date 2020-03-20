@@ -50,7 +50,9 @@
         refresh_token = undefined :: binary()     | undefined,
         id            = undefined :: binary()     | undefined,
         secret        = undefined :: binary()     | undefined,
-        scope         = undefined :: binary()     | undefined
+        scope         = undefined :: binary()     | undefined,
+        expiry_time   = undefined :: binary()     | undefined
+
 }).
 
 -type method()         :: head    |
@@ -154,8 +156,8 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
       do_retrieve_access_token(Client, Options);
     not_found ->
       case do_retrieve_access_token(Client, Options) of
-        {ok, Headers, Result} ->
-          oauth2c_token_cache:insert(Key, {Headers, Result}),
+        {ok, Headers, Result = #client{expiry_time  = ExpiryTime}} ->
+          oauth2c_token_cache:insert(Key, {Headers, Result}, ExpiryTime),
           {ok, Headers, Result};
         {error, Reason} ->
           {error, Reason}
@@ -219,9 +221,11 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Body    :: body(),
     Options :: options(),
     Client  :: client().
-request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
+request(Method, Type, Url, Expect, Headers, Body, Options,
+  Client = #client{grant_type = GrantType, scope = Scope}) ->
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
     {{_, 401, _, _}, Client2} ->
+      oauth2c_token_cache:delete(create_token_key(GrantType, Url, Scope)),
       {ok, _RetrHeaders, Client3} =
         do_retrieve_access_token(Client2, Options),
       do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
@@ -246,6 +250,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
+      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
       Result = case RefreshToken of
                  undefined ->
                    #client{
@@ -255,6 +260,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
                      ,id           = Client#client.id
                      ,secret       = Client#client.secret
                      ,scope        = Client#client.scope
+                     ,expiry_time  = ExpiryTime
                      };
                  _ ->
                    #client{
@@ -263,6 +269,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
                      ,access_token  = AccessToken
                      ,refresh_token = RefreshToken
                      ,scope         = Client#client.scope
+                     ,expiry_time  = ExpiryTime
                      }
                end,
       {ok, Headers, Result};
@@ -287,6 +294,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
       Result = #client{
                   grant_type    = Client#client.grant_type
                  ,auth_url     = Client#client.auth_url
@@ -295,6 +303,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                  ,id           = Client#client.id
                  ,secret       = Client#client.secret
                  ,scope        = Client#client.scope
+                 ,expiry_time  = ExpiryTime
                  },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
@@ -318,6 +327,7 @@ do_retrieve_access_token(#client{grant_type = <<"azure_client_credentials">>,
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
       Result = #client{
                   grant_type    = Client#client.grant_type
                  ,auth_url     = Client#client.auth_url
@@ -326,6 +336,7 @@ do_retrieve_access_token(#client{grant_type = <<"azure_client_credentials">>,
                  ,id           = Client#client.id
                  ,secret       = Client#client.secret
                  ,scope        = Client#client.scope
+                 ,expiry_time  = ExpiryTime
                  },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
