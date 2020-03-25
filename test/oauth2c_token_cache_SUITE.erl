@@ -5,11 +5,9 @@
 -include_lib("stdlib/include/assert.hrl").
 
 
-all() -> [
-  get_token,
-  get_expired_token,
-  insert_token,
-  delete_token
+all() -> [ get_valid_token
+         , get_expired_token
+         , set_and_get_token
 ].
 
 init_per_suite(Config) ->
@@ -29,39 +27,35 @@ end_per_testcase(TestCase, Config) ->
   ?MODULE:TestCase({'end', Config}),
   Config.
 
-get_token({init, _Config}) ->
-  oauth2c_token_cache:insert(?FUNCTION_NAME, token);
-get_token({'end', _Config}) ->
-  oauth2c_token_cache:delete(?FUNCTION_NAME);
-get_token(_Config) ->
+set_and_get_token({init, _Config}) -> ok;
+set_and_get_token({'end', _Config}) ->
+  oauth2c_token_cache:clear();
+set_and_get_token(_Config) ->
+  LazyToken =
+    fun() -> {ok, header, result, erlang:system_time(second) + 100} end,
+  Res1 = oauth2c_token_cache:set_and_get(?FUNCTION_NAME, LazyToken),
+  Res2 = oauth2c_token_cache:get(?FUNCTION_NAME),
+  [
+    ?assertMatch({ok, header, result}, Res1),
+    ?assertMatch([{header, result}], Res2)
+  ].
+
+get_valid_token({init, _Config}) ->
+  LazyToken =
+    fun() -> {ok, header, result, erlang:system_time(second) + 100} end,
+  oauth2c_token_cache:set_and_get(?FUNCTION_NAME, LazyToken);
+get_valid_token({'end', _Config}) ->
+  oauth2c_token_cache:clear();
+get_valid_token(_Config) ->
   Res = oauth2c_token_cache:get(?FUNCTION_NAME),
-  ?assertMatch({ok, token}, Res).
+  ?assertMatch([{header, result}], Res).
 
 get_expired_token({init, _Config}) ->
-  oauth2c_token_cache:insert(?FUNCTION_NAME, token, os:system_time(second) - 1);
+  LazyToken =
+    fun() -> {ok, header, result, erlang:system_time(second) - 100} end,
+  oauth2c_token_cache:set_and_get(?FUNCTION_NAME, LazyToken);
 get_expired_token({'end', _Config}) ->
-  oauth2c_token_cache:delete(?FUNCTION_NAME);
+  oauth2c_token_cache:clear();
 get_expired_token(_Config) ->
-  % Trying to fetch an expired token should return not found.
   Res = oauth2c_token_cache:get(?FUNCTION_NAME),
-  ?assertMatch(not_found, Res).
-
-insert_token({init, _Config}) -> ok;
-insert_token({'end', _Config}) ->
-  oauth2c_token_cache:delete(?FUNCTION_NAME);
-insert_token(_Config) ->
-  Res1 = oauth2c_token_cache:get(?FUNCTION_NAME),
-  oauth2c_token_cache:insert(?FUNCTION_NAME, token),
-  Res2 = oauth2c_token_cache:get(?FUNCTION_NAME),
-  ?assertMatch(not_found, Res1),
-  ?assertMatch({ok, token}, Res2).
-
-delete_token({init, _Config}) ->
-    oauth2c_token_cache:insert(?FUNCTION_NAME, token);
-delete_token({'end', _Config}) -> ok;
-delete_token(_Config) ->
-  Res1 = oauth2c_token_cache:get(?FUNCTION_NAME),
-  oauth2c_token_cache:delete(?FUNCTION_NAME),
-  Res2 = oauth2c_token_cache:get(?FUNCTION_NAME),
-  ?assertMatch({ok, token}, Res1),
-  ?assertMatch(not_found, Res2).
+  ?assertMatch([], Res).

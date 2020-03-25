@@ -41,53 +41,9 @@
 -export([request/8]).
 
 -define(DEFAULT_ENCODING, json).
+-define(TOKEN_CACHE_SERVER, oauth2c_token_cache).
 
--record(client, {
-        grant_type    = undefined :: binary()     | undefined,
-        auth_url      = undefined :: binary()     | undefined,
-        access_token  = undefined :: binary()     | undefined,
-        token_type    = undefined :: token_type() | undefined,
-        refresh_token = undefined :: binary()     | undefined,
-        id            = undefined :: binary()     | undefined,
-        secret        = undefined :: binary()     | undefined,
-        scope         = undefined :: binary()     | undefined,
-        expiry_time   = undefined :: binary()     | undefined
-
-}).
-
--type method()         :: head    |
-                          get     |
-                          put     |
-                          patch   |
-                          post    |
-                          trace   |
-                          options |
-                          delete.
--type url()            :: binary().
-%% <<"password">> or <<"client_credentials">>
--type at_type()        :: binary().
--type headers()        :: [header()].
--type header()         :: {binary(), binary()}.
--type status_codes()   :: [status_code()].
--type status_code()    :: integer().
--type reason()         :: term().
--type content_type()   :: json | xml | percent.
--type property()       :: atom() | tuple().
--type proplist()       :: [property()].
--type options()        :: proplist().
--type body()           :: proplist().
--type restc_response() :: { ok
-                          , Status::status_code()
-                          , Headers::headers()
-                          , Body::body()}          |
-                          { error
-                          , Status::status_code()
-                          , Headers::headers()
-                          , Body::body()}          |
-                          { error, Reason::reason()}.
--type response()       :: {restc_response(), #client{}}.
--type token_type()     :: bearer | unsupported.
--type client()         :: #client{}.
+-include("oauth2c.hrl").
 
 %%% API ========================================================================
 
@@ -148,21 +104,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
              ,secret    = Secret
              ,scope     = Scope
              },
-  Key = create_token_key(Type, Url, Scope),
-  case get_cached_token(Key) of
-    {ok, {Header, Response}} ->
-      {ok, Header, Response};
-    cache_server_not_started ->
-      do_retrieve_access_token(Client, Options);
-    not_found ->
-      case do_retrieve_access_token(Client, Options) of
-        {ok, Headers, Result = #client{expiry_time  = ExpiryTime}} ->
-          oauth2c_token_cache:insert(Key, {Headers, Result}, ExpiryTime),
-          {ok, Headers, Result};
-        {error, Reason} ->
-          {error, Reason}
-      end
-  end.
+  get_token(Client, Options, whereis(?TOKEN_CACHE_SERVER)).
 
 -spec request(Method, Url, Client) -> Response::response() when
     Method :: method(),
@@ -221,16 +163,17 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Body    :: body(),
     Options :: options(),
     Client  :: client().
-request(Method, Type, Url, Expect, Headers, Body, Options,
-  Client = #client{grant_type = GrantType, scope = Scope}) ->
+request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
     {{_, 401, _, _}, Client2} ->
-      oauth2c_token_cache:delete(create_token_key(GrantType, Url, Scope)),
+      Key = erlang:phash2(Client2),
+      LazyValue = lazy_retrieve_access_token(Client2, Options),
       {ok, _RetrHeaders, Client3} =
-        do_retrieve_access_token(Client2, Options),
+        oauth2c_token_cache:set_and_get(Key, LazyValue),
       do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
     Result -> Result
   end.
+
 %%% INTERNAL ===================================================================
 
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
@@ -379,49 +322,31 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
   AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
   [AH | proplists:delete(<<"Authorization">>, Headers)].
 
-get_cached_token(Key) ->
-  case whereis(oauth2c_token_cache) of
-    undefined ->
-      cache_server_not_started;
-    _ ->
-      oauth2c_token_cache:get(Key)
+lazy_retrieve_access_token(Client, Options) ->
+  fun() ->
+      case do_retrieve_access_token(Client, Options) of
+        {ok, Header, Result = #client{expiry_time = ExpiryTime}} ->
+          {ok, Header, Result, ExpiryTime};
+        {error, Reason} -> {error, Reason}
+      end
   end.
 
-create_token_key(Type, Url, undefined) ->
-  <<Type/binary, Url/binary>>;
-create_token_key(Type, Url, Scope) ->
-  <<Type/binary, Url/binary, Scope/binary>>.
+get_token(Client, Options, undefined) ->
+  % Caching is not enabled.
+  do_retrieve_access_token(Client, Options);
+get_token(Client, Options, _Pid) ->
+  Key = erlang:phash2(Client),
+  case oauth2c_token_cache:get(Key) of
+    [{Header, Result}] -> {ok, Header, Result};
+    [] ->
+      LazyValue = lazy_retrieve_access_token(Client, Options),
+      oauth2c_token_cache:set_and_get(Key,LazyValue)
+  end.
 
 %%%_ * Tests -------------------------------------------------------
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
-
-create_token_key_test_() ->
-    [
-        fun() ->
-            {Type, Url, Scope} = Input,
-            Actual = create_token_key(Type, Url, Scope),
-            ?assertEqual(Expected, Actual)
-        end
-    ||
-        {Input, Expected} <-[
-            {{<<"123">>, <<"456">>, undefined}, <<"123456">>},
-            {{<<"123">>, <<"456">>, <<"789">>}, <<"123456789">>}
-        ]
-    ].
-
-get_cached_token_test_() ->
-  [
-      fun() ->
-          Actual = get_cached_token(Input),
-          ?assertEqual(Expected, Actual)
-      end
-  ||
-      {Input, Expected} <-[
-          {input, cache_server_not_started}
-      ]
-  ].
 
 -endif.
 

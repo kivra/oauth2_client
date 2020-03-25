@@ -19,13 +19,15 @@ groups() -> [].
 all() -> [ retrieve_access_token
          , retrieve_cached_access_token
          , retrieve_cached_expired_access_token
+         , retrieve_access_token_burst
+         , retrieve_access_token_burst_with_expire
          , fetch_access_token_on_request
          , fetch_access_token_on_request
          , fetch_new_token_on_401
          ].
 
 init_per_suite(Config) ->
-  {ok, Pid} = oauth2c_token_cache:start(),
+  {ok, Pid} = oauth2c_token_cache:start(1),
   [{pid, Pid}|Config].
 end_per_suite(Config) ->
   {pid, Pid} = proplists:lookup(pid, Config),
@@ -62,11 +64,12 @@ retrieve_cached_access_token(_Config) ->
                                 ])).
 
 retrieve_cached_expired_access_token(_Config) ->
-    oauth2c_token_cache:set_default_ttl(1),
     oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
                                            <<"SECRET">>),
+  % TTL is 1000ms for a cached entry, hence sleeping for 1050ms should
+  % make the cached entry invalid.
   timer:sleep(1050),
   oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
@@ -75,8 +78,45 @@ retrieve_cached_expired_access_token(_Config) ->
   ?assertEqual(2, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
-                                ])),
-    oauth2c_token_cache:set_default_ttl(3600).
+                                ])).
+
+retrieve_access_token_burst(_Config) ->
+  % The cache server should be able to handle multiple concurrent requests
+  % and only perform a single token request.
+  N = 1000,
+  Fun = fun() ->
+          oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                                  ?AUTH_URL,
+                                                  <<"ID">>,
+                                                  <<"SECRET">>)
+        end,
+  process_flag(trap_exit, true),
+  [spawn_link(Fun) || _ <- lists:seq(1, N)],
+  [receive {'EXIT', _, _} -> ok end || _ <- lists:seq(1, N)],
+  ?assertEqual(1, meck:num_calls(restc, request,
+                                [ post, percent,
+                                  ?AUTH_URL, '_', '_', '_', '_'
+                                ])).
+
+retrieve_access_token_burst_with_expire(_Config) ->
+  N = 1000,
+  Fun = fun() ->
+          oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                                  ?AUTH_URL,
+                                                  <<"ID">>,
+                                                  <<"SECRET">>)
+        end,
+  process_flag(trap_exit, true),
+  [case Num of
+    % Expire cached entry
+    50 -> timer:sleep(1050), spawn_link(Fun);
+    _ -> spawn_link(Fun)
+   end || Num <- lists:seq(1, N)],
+  [receive {'EXIT', _, _} -> ok end || _ <- lists:seq(1, N - 1)],
+  ?assertEqual(2, meck:num_calls(restc, request,
+                                [ post, percent,
+                                  ?AUTH_URL, '_', '_', '_', '_'
+                                ])).
 
 fetch_access_token_and_do_request(_Config) ->
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
@@ -118,6 +158,7 @@ mock_http_requests() ->
   meck:expect(restc, request,
               fun(post, percent, ?AUTH_URL, [200], _, _, _) ->
                   Body = [{<<"access_token">>, ?VALID_TOKEN},
+                          {<<"expiry_time">>, erlang:system_time(second) + 1},
                           {<<"token_type">>, <<"bearer">>}],
                   {ok, 200, [], Body};
                  (post, percent, ?INVALID_TOKEN_AUTH_URL, [200], _, _, _) ->

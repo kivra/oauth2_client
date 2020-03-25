@@ -16,135 +16,134 @@
 -export([start_link/0]).
 -export([start_link/1]).
 -export([get/1]).
--export([insert/2]).
--export([insert/3]).
--export([delete/1]).
--export([set_default_ttl/1]).
--export([clear/0]).
+-export([set_and_get/2]).
 
 %% gen_server
 -export([init/1]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
+-export([clear/0]).
 
+%%%_* Macros =========================================================
 -define(DEFAULT_TTL, 3600). % Default cache entry TTL in seconds.
+-define(SERVER, ?MODULE).
+-define(TOKEN_CACHE_ID, token_cache_id).
 
 %%%_* Includes =========================================================
+
+-include("oauth2c.hrl").
+
 %%%_* Code =============================================================
 %%%_ * Types -----------------------------------------------------------
 %%%_ * API -------------------------------------------------------------
 
-start() -> start(#{default_cache_ttl => ?DEFAULT_TTL, cache => #{}}).
-start(State) ->
-  gen_server:start({local, ?MODULE}, ?MODULE, State, []).
+-spec start() -> {atom(), pid()}.
+start() ->
+  start(?DEFAULT_TTL).
+-spec start(non_neg_integer()) -> {atom(), pid()}.
+start(DefaultTTL) ->
+  gen_server:start({local, ?SERVER}, ?SERVER,
+                  #{default_ttl => DefaultTTL}, []).
 
-start_link() -> start_link(#{default_cache_ttl => ?DEFAULT_TTL, cache => #{}}).
-start_link(State) ->
-  gen_server:start_link({local, ?MODULE}, ?MODULE, State, []).
+-spec start_link() -> {atom(), pid()}.
+start_link() ->
+  start_link(?DEFAULT_TTL).
+-spec start_link(non_neg_integer()) -> {atom(), pid()}.
+start_link(DefaultTTL) ->
+  gen_server:start_link({local, ?SERVER}, ?SERVER,
+                        #{default_ttl => DefaultTTL}, []).
 
-get(Key) -> gen_server:call(?MODULE, {get, Key}).
+-spec get(integer()) -> [{headers(), client()}].
+get(Key) ->
+  Now = erlang:system_time(second),
+  case get_cached_token(Key,
+                        Now,
+                        ets:lookup(?TOKEN_CACHE_ID, Key)) of
+    [{Header, Result}] -> [{Header, Result}];
+    [] -> []
+  end.
 
-insert(Key, Value) ->
-  gen_server:cast(?MODULE, {insert, {Key, Value}, undefined}).
-insert(Key, Value, ExpireTime) ->
-  gen_server:cast(?MODULE, {insert, {Key, Value}, ExpireTime}).
+-spec set_and_get(Key, LazyValue) -> Value | Error when
+  Key :: integer(),
+  LazyValue :: fun(() -> Value | Error),
+  Value :: {ok, headers(), client()},
+  Error :: {error, binary()}.
+set_and_get(Key, LazyValue) ->
+  gen_server:call(?MODULE, {set_and_get, Key, LazyValue}).
 
-delete(Key) -> gen_server:cast(?MODULE, {delete, Key}).
-
-set_default_ttl(NewTTL) -> gen_server:cast(?MODULE, {set_default_ttl, NewTTL}).
-
-clear() -> gen_server:cast(?MODULE, clear).
+-spec clear() -> true.
+clear() ->
+  ets:delete_all_objects(?TOKEN_CACHE_ID).
 
 %%%_ * gen_server callbacks --------------------------------------------
 
 init(State) ->
+  EtsOpts = [set, public, named_table, {read_concurrency, true}],
+  ets:new(?TOKEN_CACHE_ID, EtsOpts),
   {ok, State}.
 
-handle_call({get, Key}, _From, State = #{cache := Cache}) ->
-  case get_token(Cache, Key, os:system_time(second)) of
-    {ok, Token} ->
-      {reply, {ok, Token}, State};
-    token_expired ->
-      {reply, not_found, State#{cache := maps:remove(Key, Cache)}};
-    not_found ->
-      {reply, not_found, State}
+handle_call({set_and_get, Key, LazyValue}, _From,
+  State = #{default_ttl := DefaultTTL}) ->
+  Now = erlang:system_time(second),
+  case get_cached_token(  Key
+                        , Now
+                        , ets:lookup(?TOKEN_CACHE_ID, Key)) of
+    [{Header, Result}] -> {reply, [{Header, Result}], State};
+    [] -> case LazyValue() of
+            {ok, Header, Result, ExpiryTime0} ->
+              ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
+              ets:insert(?TOKEN_CACHE_ID, {Key, {Header, Result, ExpiryTime}}),
+              {reply, {ok, Header, Result}, State};
+            {error, Reason} -> {reply, {error, Reason}, State}
+          end
   end.
 
-handle_cast({insert, {Key, Value}, undefined},
-  State = #{cache := Cache, default_cache_ttl := TTL}) ->
-  NewCache = Cache#{Key => {Value, os:system_time(second) + TTL}},
-  {noreply, State#{cache := NewCache}};
-handle_cast({insert, {Key, Value}, ExpireTime}, State = #{cache := Cache}) ->
-  NewCache = Cache#{Key => {Value, ExpireTime}},
-  {noreply, State#{cache := NewCache}};
-
-handle_cast({delete, Key}, State = #{cache := Cache}) ->
-  {noreply, State#{cache := maps:remove(Key, Cache)}};
-
-handle_cast({set_default_ttl, NewTTL}, State) ->
-  {noreply, State#{default_cache_ttl := NewTTL}};
-
-handle_cast(clear, State) ->
-  {noreply, State#{cache := #{}}}.
+handle_cast(_, State) -> {noreply, State}.
 
 %%%_ * Private functions -----------------------------------------------
 
-%update_cache(Cache, Key, Value, ExpireTime) ->
-%  Cache#{Key => {Value, os:system_time(second)}}.
+get_cached_token(Key, Now, [{Key, {Header, Result, ExpiryTime}}])
+  when ExpiryTime > Now ->
+  [{Header, Result}];
+get_cached_token(_Key, _Now, _) -> [].
 
-get_token(Cache, Key, Now) ->
-  case maps:is_key(Key, Cache) of
-    true -> get_token_if_not_expired(maps:get(Key, Cache), Now);
-    false -> not_found
-  end.
+get_expiry_time(undefined, DefaultTTL) ->
+  erlang:system_time(second) + DefaultTTL;
+get_expiry_time(ExpiryTime, _DefaultTTL) ->
+  ExpiryTime.
 
-get_token_if_not_expired({Token, ExpireTime}, Now)
-  when ExpireTime > Now ->
-  {ok, Token};
-get_token_if_not_expired(_Value, _Now) ->
-  token_expired.
 
 %%%_ * Tests -------------------------------------------------------
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
-get_token_test_() ->
+get_expiry_time_test_() ->
   [
-    fun() ->
-      {Cache, Key, Now} = Input,
-      Actual = get_token(Cache, Key, Now),
-      ?assertEqual(Expected, Actual)
-    end
+      fun() ->
+          {T, Default} = Input,
+          Actual = get_expiry_time(T, Default),
+          ?assertEqual(Expected, Actual)
+      end
   ||
-    {Input, Expected} <-[
-      {{#{}, key, 0}, not_found},
-      {{#{key => {token, 0}}, other_key, 100}, not_found},
-      {{#{key => {token, 99}}, key, 100}, token_expired},
-      {{#{key => {token, 101}}, key, 100}, {ok, token}}
-    ]
+      {Input, Expected} <-[
+          {{1, 100}, 1}
+      ]
   ].
 
-%  update_cache_test_() ->
-%  [
-%    fun() ->
-%      {Cache, Key, Value} = Input,
-%      Actual = update_cache(Cache, Key, Value),
-%      % Check that each cache entry contains a timestamp
-%      maps:fold(
-%        fun(_, {V, Timestamp}, ok) ->
-%          ?assert(is_atom(V)),
-%          ?assert(is_integer(Timestamp))
-%        end, ok, Actual),
-%      % Check that cache contains the expected values,´
-%      ?assertEqual(Expected,
-%        lists:map(fun({V, _}) -> V end, maps:values(Actual)))
-%    end
-%  ||
-%    {Input, Expected} <-[
-%      {{#{}, k1, v1}, [v1]},
-%      {{#{k1 => {v1, 0}}, k2, v2}, [v1, v2]}
-%    ]
-%  ].
+  get_cached_token_test_() ->
+  [
+      fun() ->
+          {Key, Now, Token} = Input,
+          Actual = get_cached_token(Key, Now, Token),
+          ?assertEqual(Expected, Actual)
+      end
+  ||
+      {Input, Expected} <-[
+          {{k1, 100, [{k1, {[], res, 101}}]}, [{[], res}]},
+          {{k1, 100, [{k1, {[], res, 99}}]}, []},
+          {{k1, 100, [{k2, {[], res, 101}}]}, []}
+      ]
+  ].
 
 -endif.
