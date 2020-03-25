@@ -9,7 +9,6 @@
 -behaviour(gen_server).
 
 %%%_* Exports ==========================================================
-%%%_ * API -------------------------------------------------------------
 
 -export([start/0]).
 -export([start/1]).
@@ -25,6 +24,7 @@
 -export([clear/0]).
 
 %%%_* Macros =========================================================
+
 -define(DEFAULT_TTL, 3600). % Default cache entry TTL in seconds.
 -define(SERVER, ?MODULE).
 -define(TOKEN_CACHE_ID, token_cache_id).
