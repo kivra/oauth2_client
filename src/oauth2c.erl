@@ -328,7 +328,6 @@ lazy_retrieve_access_token(Client, Options) ->
       end
   end.
 
-
 get_access_token(Client, Options) ->
   case proplists:get_value(enable_cache, Options, false) of
     false -> do_retrieve_access_token(Client, Options);

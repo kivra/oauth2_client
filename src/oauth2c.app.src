@@ -29,6 +29,7 @@
   {description, "Erlang OAuth2 Client"},
   {vsn, git},
   {registered, []},
+  {mod, {oauth2c_app, []}},
   {applications, [
                   kernel,
                   stdlib,

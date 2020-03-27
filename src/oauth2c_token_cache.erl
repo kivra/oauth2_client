@@ -43,7 +43,7 @@ start() ->
 -spec start(non_neg_integer()) -> {atom(), pid()}.
 start(DefaultTTL) ->
   gen_server:start({local, ?SERVER}, ?SERVER,
-                  #{default_ttl => DefaultTTL}, []).
+                   #{default_ttl => DefaultTTL}, []).
 
 -spec start_link() -> {atom(), pid()}.
 start_link() ->
@@ -58,16 +58,17 @@ get(Key) ->
   Now = erlang:system_time(second),
   case get_cached_token(Key,
                         Now,
-                        ets:lookup(?TOKEN_CACHE_ID, Key)) of
+                        ets:lookup(?TOKEN_CACHE_ID, Key))
+  of
     [{Header, Result}] -> [{Header, Result}];
     [] -> []
   end.
 
 -spec set_and_get(Key, LazyValue) -> Value | Error when
-  Key :: integer(),
-  LazyValue :: fun(() -> Value | Error),
-  Value :: {ok, headers(), client()},
-  Error :: {error, binary()}.
+    Key :: integer(),
+    LazyValue :: fun(() -> Value | Error),
+    Value :: {ok, headers(), client()},
+    Error :: {error, binary()}.
 set_and_get(Key, LazyValue) ->
   gen_server:call(?MODULE, {set_and_get, Key, LazyValue}).
 
@@ -83,19 +84,21 @@ init(State) ->
   {ok, State}.
 
 handle_call({set_and_get, Key, LazyValue}, _From,
-  State = #{default_ttl := DefaultTTL}) ->
+            State = #{default_ttl := DefaultTTL}) ->
   Now = erlang:system_time(second),
-  case get_cached_token(  Key
-                        , Now
-                        , ets:lookup(?TOKEN_CACHE_ID, Key)) of
-    [{Header, Result}] -> {reply, [{Header, Result}], State};
-    [] -> case LazyValue() of
-            {ok, Header, Result, ExpiryTime0} ->
-              ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
-              ets:insert(?TOKEN_CACHE_ID, {Key, {Header, Result, ExpiryTime}}),
-              {reply, {ok, Header, Result}, State};
-            {error, Reason} -> {reply, {error, Reason}, State}
-          end
+  case get_cached_token( Key
+                       , Now
+                       , ets:lookup(?TOKEN_CACHE_ID, Key)) of
+    [{Header, Result}] ->
+      {reply, [{Header, Result}], State};
+    [] ->
+      case LazyValue() of
+        {ok, Header, Result, ExpiryTime0} ->
+          ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
+          ets:insert(?TOKEN_CACHE_ID, {Key, {Header, Result, ExpiryTime}}),
+          {reply, {ok, Header, Result}, State};
+        {error, Reason} -> {reply, {error, Reason}, State}
+      end
   end.
 
 handle_cast(_, State) -> {noreply, State}.
@@ -111,7 +114,6 @@ get_expiry_time(undefined, DefaultTTL) ->
   erlang:system_time(second) + DefaultTTL;
 get_expiry_time(ExpiryTime, _DefaultTTL) ->
   ExpiryTime.
-
 
 %%%_ * Tests -------------------------------------------------------
 
