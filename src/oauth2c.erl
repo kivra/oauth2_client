@@ -95,7 +95,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope) ->
     ID      :: binary(),
     Secret  :: binary(),
     Scope   :: binary() | undefined,
-    Options :: list().
+    Options :: options().
 retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
   Client = #client{
               grant_type = Type
@@ -104,7 +104,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
              ,secret    = Secret
              ,scope     = Scope
              },
-  get_token(Client, Options, whereis(?TOKEN_CACHE_SERVER)).
+  get_access_token(Client, Options).
 
 -spec request(Method, Url, Client) -> Response::response() when
     Method :: method(),
@@ -166,10 +166,7 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
     {{_, 401, _, _}, Client2} ->
-      Key = erlang:phash2(Client2),
-      LazyValue = lazy_retrieve_access_token(Client2, Options),
-      {ok, _RetrHeaders, Client3} =
-        oauth2c_token_cache:set_and_get(Key, LazyValue),
+       {ok, _RetrHeaders, Client3} = get_access_token(Client2, Options),
       do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
     Result -> Result
   end.
@@ -303,7 +300,7 @@ do_request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
 add_auth_header(Headers0,
                 #client{access_token = undefined} = Client0,
                 Options) ->
-  {ok, _RetrHeaders, Client} = do_retrieve_access_token(Client0, Options),
+  {ok, _RetrHeaders, Client} = get_access_token(Client0, Options),
   Headers                    = add_auth_header(Headers0, Client),
   {Headers, Client};
 add_auth_header(Headers0, Client, _) ->
@@ -331,16 +328,18 @@ lazy_retrieve_access_token(Client, Options) ->
       end
   end.
 
-get_token(Client, Options, undefined) ->
-  % Caching is not enabled.
-  do_retrieve_access_token(Client, Options);
-get_token(Client, Options, _Pid) ->
-  Key = erlang:phash2(Client),
-  case oauth2c_token_cache:get(Key) of
-    [{Header, Result}] -> {ok, Header, Result};
-    [] ->
-      LazyValue = lazy_retrieve_access_token(Client, Options),
-      oauth2c_token_cache:set_and_get(Key,LazyValue)
+
+get_access_token(Client, Options) ->
+  case proplists:get_value(enable_cache, Options, false) of
+    false -> do_retrieve_access_token(Client, Options);
+    true ->
+      Key = erlang:phash2(Client),
+      case oauth2c_token_cache:get(Key) of
+        [{Header, Result}] -> {ok, Header, Result};
+        [] ->
+          LazyValue = lazy_retrieve_access_token(Client, Options),
+          oauth2c_token_cache:set_and_get(Key, LazyValue)
+      end
   end.
 
 %%%_ * Tests -------------------------------------------------------
