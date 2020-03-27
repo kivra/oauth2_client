@@ -53,11 +53,15 @@ retrieve_cached_access_token(_Config) ->
   oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
-                                           <<"SECRET">>),
+                                           <<"SECRET">>,
+                                           undefined,
+                                          [{enable_cache, true}]),
   oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
-                                           <<"SECRET">>),
+                                           <<"SECRET">>,
+                                           undefined,
+                                          [{enable_cache, true}]),
   ?assertEqual(1, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
@@ -67,14 +71,18 @@ retrieve_cached_expired_access_token(_Config) ->
     oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
-                                           <<"SECRET">>),
+                                           <<"SECRET">>,
+                                           undefined,
+                                          [{enable_cache, true}]),
   % TTL is 1000ms for a cached entry, hence sleeping for 1050ms should
   % make the cached entry invalid.
   timer:sleep(1050),
   oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                            ?AUTH_URL,
                                            <<"ID">>,
-                                           <<"SECRET">>),
+                                           <<"SECRET">>,
+                                           undefined,
+                                          [{enable_cache, true}]),
   ?assertEqual(2, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
@@ -88,7 +96,9 @@ retrieve_access_token_burst(_Config) ->
           oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                                   ?AUTH_URL,
                                                   <<"ID">>,
-                                                  <<"SECRET">>)
+                                                  <<"SECRET">>,
+                                                  undefined,
+                                                  [{enable_cache, true}])
         end,
   process_flag(trap_exit, true),
   [spawn_link(Fun) || _ <- lists:seq(1, N)],
@@ -104,7 +114,9 @@ retrieve_access_token_burst_with_expire(_Config) ->
           oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                                   ?AUTH_URL,
                                                   <<"ID">>,
-                                                  <<"SECRET">>)
+                                                  <<"SECRET">>,
+                                                  undefined,
+                                                  [{enable_cache, true}])
         end,
   process_flag(trap_exit, true),
   [case Num of
