@@ -165,8 +165,13 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Client  :: client().
 request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
-    {{_, 401, _, _}, Client2} ->
-       {ok, _RetrHeaders, Client3} = get_access_token(Client2, Options),
+    {{_, 401, _, _}, Client2 = #client{expiry_time = undefined}} ->
+      {ok, _, Client3} = get_access_token(Client2, Options),
+      do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
+    {{_, 401, _, _}, Client2 = #client{expiry_time = ExpiryTime}} ->
+      Key = hash_client(Client),
+      oauth2c_token_cache:delete_token(Key, ExpiryTime),
+      {ok, _, Client3} = get_access_token(Client2, Options),
       do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
     Result -> Result
   end.
@@ -322,17 +327,18 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
 lazy_retrieve_access_token(Client, Options) ->
   fun() ->
       case do_retrieve_access_token(Client, Options) of
-        {ok, Header, Result = #client{expiry_time = ExpiryTime}} ->
-          {ok, Header, Result, ExpiryTime};
+        {ok, Header, Result} ->
+          {ok, Header, Result};
         {error, Reason} -> {error, Reason}
       end
   end.
 
 get_access_token(Client, Options) ->
   case proplists:get_value(enable_cache, Options, false) of
-    false -> do_retrieve_access_token(Client, Options);
+    false ->
+      do_retrieve_access_token(Client, Options);
     true ->
-      Key = erlang:phash2(Client),
+      Key = hash_client(Client),
       case oauth2c_token_cache:get(Key) of
         [{Header, Result}] -> {ok, Header, Result};
         [] ->
@@ -340,6 +346,14 @@ get_access_token(Client, Options) ->
           oauth2c_token_cache:set_and_get(Key, LazyValue)
       end
   end.
+
+hash_client(#client{grant_type = Type,
+                    auth_url = AuthUrl,
+                    id = ID,
+                    secret = Secret,
+                    scope = Scope}) ->
+  erlang:phash2({Type, AuthUrl, ID, Secret, Scope}).
+
 
 %%%_ * Tests -------------------------------------------------------
 

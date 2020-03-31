@@ -16,6 +16,7 @@
 -export([start_link/1]).
 -export([get/1]).
 -export([set_and_get/2]).
+-export([delete_token/2]).
 
 %% gen_server
 -export([init/1]).
@@ -64,6 +65,10 @@ get(Key) ->
     [] -> []
   end.
 
+-spec delete_token(integer(), integer()) -> atom().
+delete_token(Key, ExpiryTime) ->
+  gen_server:call(?MODULE, {delete, Key, ExpiryTime}).
+
 -spec set_and_get(Key, LazyValue) -> Value | Error when
     Key :: integer(),
     LazyValue :: fun(() -> Value | Error),
@@ -93,20 +98,36 @@ handle_call({set_and_get, Key, LazyValue}, _From,
       {reply, [{Header, Result}], State};
     [] ->
       case LazyValue() of
-        {ok, Header, Result, ExpiryTime0} ->
+        {ok, Header, Result = #client{expiry_time = ExpiryTime0}} ->
           ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
-          ets:insert(?TOKEN_CACHE_ID, {Key, {Header, Result, ExpiryTime}}),
+          ets:insert(?TOKEN_CACHE_ID,
+            {Key, {Header, Result#client{expiry_time = ExpiryTime}}}),
           {reply, {ok, Header, Result}, State};
         {error, Reason} -> {reply, {error, Reason}, State}
       end
-  end.
+  end;
+
+handle_call({delete, Key, ExpiryTime}, _From, State) ->
+  % The expiry time of the token the user wishes to delete
+  % is needed in order to uniquely indentify a cached access token.
+  % It could be the case that the token the user wishes to delete has
+  % already been deleted and refreshed by a concurrent thread. If we would
+  % not use the ExpireTime, we cold accidently delete a valid refreshed token.
+  case ets:lookup(?TOKEN_CACHE_ID, Key) of
+    [{Key, {_, #client{expiry_time = ExpiryTime}}}] ->
+      ets:delete(?TOKEN_CACHE_ID, Key);
+    _ -> ok
+  end,
+  {reply, ok, State}.
 
 handle_cast(_, State) -> {noreply, State}.
 
 %%%_ * Private functions -----------------------------------------------
 
-get_cached_token(Key, Now, [{Key, {Header, Result, ExpiryTime}}])
-  when ExpiryTime > Now ->
+get_cached_token( Key
+                , Now
+                , [{Key, {Header, Result = #client{expiry_time = ExpiryTime}}}]
+                ) when ExpiryTime > Now ->
   [{Header, Result}];
 get_cached_token(_Key, _Now, _) -> [].
 
@@ -142,9 +163,10 @@ get_expiry_time_test_() ->
       end
   ||
       {Input, Expected} <-[
-          {{k1, 100, [{k1, {[], res, 101}}]}, [{[], res}]},
-          {{k1, 100, [{k1, {[], res, 99}}]}, []},
-          {{k1, 100, [{k2, {[], res, 101}}]}, []}
+          {{k1, 100, [{k1, {[], #client{expiry_time = 101}}}]},
+            [{[], #client{expiry_time = 101}}]},
+          {{k1, 100, [{k1, {[], #client{expiry_time = 99}}}]}, []},
+          {{k1, 100, [{k2, {[], #client{expiry_time = 101}}}]}, []}
       ]
   ].
 
