@@ -7,7 +7,7 @@
         id            = undefined :: binary()     | undefined,
         secret        = undefined :: binary()     | undefined,
         scope         = undefined :: binary()     | undefined,
-        expiry_time   = undefined :: binary()     | undefined
+        expiry_time   = undefined :: integer()     | undefined
 }).
 
 -type method()         :: head    |
