@@ -104,7 +104,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
              ,secret    = Secret
              ,scope     = Scope
              },
-  get_access_token(Client, Options).
+  do_retrieve_access_token(Client, Options).
 
 -spec request(Method, Url, Client) -> Response::response() when
     Method :: method(),
@@ -163,19 +163,31 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Body    :: body(),
     Options :: options(),
     Client  :: client().
-request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
-  case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
-    {{_, 401, _, _}, Client2 = #client{expiry_time = undefined}} ->
-      do_request(Method,Type,Url,Expect,Headers,Body,Options,
-        Client2#client{access_token = undefined});
-    {{_, 401, _, _}, Client2 = #client{expiry_time = ExpiryTime}} ->
-      oauth2c_token_cache:delete_token(hash_client(Client), ExpiryTime),
-      do_request(Method,Type,Url,Expect,Headers,Body,Options,
-        Client2#client{access_token = undefined});
+
+request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
+  Client1 = ensure_client_has_access_token(Client0, Options),
+  case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) of
+    {{_, 401, _, _}, Client2} ->
+      Client3 = revalidate_token(Client2, Options),
+      do_request(Method, Type, Url, Expect, Headers, Body, Options, Client3);
     Result -> Result
   end.
 
 %%% INTERNAL ===================================================================
+
+ensure_client_has_access_token(Client0, Options) ->
+  case Client0 of
+    #client{access_token = undefined} ->
+      {ok, Client} = get_access_token(Client0, Options),
+      Client;
+    _ ->
+      Client0
+  end.
+
+revalidate_token(_Client, _Options) ->
+  todo.
+%%oauth2c_token_cache:delete_token(hash_client(Client), ExpiryTime).
+
 
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
   Payload0 = [
@@ -297,19 +309,9 @@ get_token_type(Type) ->
 get_str_token_type("bearer") -> bearer;
 get_str_token_type(_Else) -> unsupported.
 
-do_request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
-  {Headers2, Client} = add_auth_header(Headers, Client0, Options),
-  {restc:request(Method, Type, Url, Expect, Headers2, Body, Options), Client}.
-
-add_auth_header(Headers0,
-                #client{access_token = undefined} = Client0,
-                Options) ->
-  {ok, _RetrHeaders, Client} = get_access_token(Client0, Options),
-  Headers                    = add_auth_header(Headers0, Client),
-  {Headers, Client};
-add_auth_header(Headers0, Client, _) ->
+do_request(Method, Type, Url, Expect, Headers0, Body, Options, Client) ->
   Headers = add_auth_header(Headers0, Client),
-  {Headers, Client}.
+  {restc:request(Method, Type, Url, Expect, Headers, Body, Options), Client}.
 
 add_auth_header(Headers, #client{grant_type = <<"azure_client_credentials">>,
                                  access_token = AccessToken}) ->
@@ -323,26 +325,27 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
   AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
   [AH | proplists:delete(<<"Authorization">>, Headers)].
 
-lazy_retrieve_access_token(Client, Options) ->
+retrieve_access_token_fun(Client0, Options) ->
   fun() ->
-      case do_retrieve_access_token(Client, Options) of
-        {ok, Header, Result} ->
-          {ok, Header, Result};
+      case do_retrieve_access_token(Client0, Options) of
+        {ok, _Headers, Client} -> {ok, Client};
         {error, Reason} -> {error, Reason}
       end
   end.
 
-get_access_token(Client, Options) ->
+get_access_token(Client0, Options) ->
   case proplists:get_value(enable_cache, Options, false) of
     false ->
-      do_retrieve_access_token(Client, Options);
+      {ok, _Headers, Client} = do_retrieve_access_token(Client0, Options),
+      {ok, Client};
     true ->
-      Key = hash_client(Client),
+      Key = hash_client(Client0),
       case oauth2c_token_cache:get(Key) of
-        [{Header, Result}] -> {ok, Header, Result};
-        [] ->
-          LazyValue = lazy_retrieve_access_token(Client, Options),
-          oauth2c_token_cache:set_and_get(Key, LazyValue)
+        {error, not_found} ->
+          RevalidateFun = retrieve_access_token_fun(Client0, Options),
+          oauth2c_token_cache:set_and_get(Key, RevalidateFun);
+        {ok, Client} ->
+          {ok, Client}
       end
   end.
 
@@ -352,7 +355,6 @@ hash_client(#client{grant_type = Type,
                     secret = Secret,
                     scope = Scope}) ->
   erlang:phash2({Type, AuthUrl, ID, Secret, Scope}).
-
 
 %%%_ * Tests -------------------------------------------------------
 
