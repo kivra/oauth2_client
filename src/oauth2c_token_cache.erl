@@ -88,7 +88,7 @@ init(State) ->
   ets:new(?TOKEN_CACHE_ID, EtsOpts),
   {ok, State}.
 
-handle_call({set_and_get, Key, LazyValue}, _From,
+handle_call({set_and_get, Key, LazyValue, GivenExpiryTime}, _From,
             State = #{default_ttl := DefaultTTL}) ->
   Now = erlang:system_time(second),
   case get_cached_token( Key

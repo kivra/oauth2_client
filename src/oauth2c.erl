@@ -168,7 +168,7 @@ request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
   Client1 = ensure_client_has_access_token(Client0, Options),
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) of
     {{_, 401, _, _}, Client2} ->
-      Client3 = revalidate_token(Client2, Options),
+      Client3 = get_access_token(Client2, Options),
       do_request(Method, Type, Url, Expect, Headers, Body, Options, Client3);
     Result -> Result
   end.
@@ -183,11 +183,6 @@ ensure_client_has_access_token(Client0, Options) ->
     _ ->
       Client0
   end.
-
-revalidate_token(_Client, _Options) ->
-  todo.
-%%oauth2c_token_cache:delete_token(hash_client(Client), ExpiryTime).
-
 
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
   Payload0 = [
@@ -333,12 +328,14 @@ retrieve_access_token_fun(Client0, Options) ->
       end
   end.
 
-get_access_token(Client0, Options) ->
-  case proplists:get_value(enable_cache, Options, false) of
-    false ->
+get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
+  case {proplists:get_value(enable_cache, Options, false),
+        proplists:get_value(force_revalidate, Options, false)}
+  of
+    {false, _} ->
       {ok, _Headers, Client} = do_retrieve_access_token(Client0, Options),
       {ok, Client};
-    true ->
+    {true, false} ->
       Key = hash_client(Client0),
       case oauth2c_token_cache:get(Key) of
         {error, not_found} ->
@@ -346,7 +343,11 @@ get_access_token(Client0, Options) ->
           oauth2c_token_cache:set_and_get(Key, RevalidateFun);
         {ok, Client} ->
           {ok, Client}
-      end
+      end;
+    {true, true} ->
+      Key = hash_client(Client0),
+      RevalidateFun = retrieve_access_token_fun(Client0, Options),
+      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiryTime)
   end.
 
 hash_client(#client{grant_type = Type,
