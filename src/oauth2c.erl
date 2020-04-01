@@ -166,13 +166,12 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
     {{_, 401, _, _}, Client2 = #client{expiry_time = undefined}} ->
-      {ok, _, Client3} = get_access_token(Client2, Options),
-      do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
+      do_request(Method,Type,Url,Expect,Headers,Body,Options,
+        Client2#client{access_token = undefined});
     {{_, 401, _, _}, Client2 = #client{expiry_time = ExpiryTime}} ->
-      Key = hash_client(Client),
-      oauth2c_token_cache:delete_token(Key, ExpiryTime),
-      {ok, _, Client3} = get_access_token(Client2, Options),
-      do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
+      oauth2c_token_cache:delete_token(hash_client(Client), ExpiryTime),
+      do_request(Method,Type,Url,Expect,Headers,Body,Options,
+        Client2#client{access_token = undefined});
     Result -> Result
   end.
 
