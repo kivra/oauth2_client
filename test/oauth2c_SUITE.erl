@@ -8,6 +8,7 @@
 -define(AUTH_URL, <<"https://authurl.com">>).
 -define(INVALID_TOKEN_AUTH_URL, <<"https://invalidauthurl.com">>).
 -define(REQUEST_URL, <<"https://requesturl.com">>).
+-define(REQUEST_URL_401, <<"https://requesturl401.com">>).
 -define(CLIENT_CREDENTIALS_GRANT, <<"client_credentials">>).
 -define(VALID_TOKEN, <<"iamanaccesstoken">>).
 -define(HEADERS(AccessToken),
@@ -17,16 +18,16 @@
 
 groups() -> [].
 
-all() -> [ retrieve_access_token
-         , fetch_access_token_on_request
-         , fetch_access_token_on_request
-         , fetch_new_token_on_401
-         , retrieve_cached_access_token
-         , retrieve_cached_expired_access_token
-         , retrieve_cached_token_burst
-         , retrieve_cached_token_burst_with_expire
-         , retrieve_cached_token_on_401
-         , retrieve_cached_token_on_401_burst
+all() -> [% retrieve_access_token
+         %, fetch_access_token_on_request
+         %, fetch_access_token_on_request
+         %, fetch_new_token_on_401
+         %, retrieve_cached_access_token
+         %, retrieve_cached_expired_access_token
+         %, retrieve_cached_token_burst
+         %, retrieve_cached_token_burst_with_expire
+         %retrieve_cached_token_on_401
+          retrieve_cached_token_on_401_burst
          ].
 
 init_per_suite(Config) ->
@@ -59,39 +60,23 @@ retrieve_access_token(_Config) ->
   ?assertMatch({ok, _, _}, Response).
 
 retrieve_cached_access_token(_Config) ->
-  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                           ?AUTH_URL,
-                                           <<"ID">>,
-                                           <<"SECRET">>,
-                                           undefined,
-                                          [{enable_cache, true}]),
-  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                           ?AUTH_URL,
-                                           <<"ID">>,
-                                           <<"SECRET">>,
-                                           undefined,
-                                          [{enable_cache, true}]),
+  Client = client(?AUTH_URL),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client),
   ?assertEqual(1, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
                                 ])).
 
 retrieve_cached_expired_access_token(_Config) ->
-    oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                           ?AUTH_URL,
-                                           <<"ID">>,
-                                           <<"SECRET">>,
-                                           undefined,
-                                          [{enable_cache, true}]),
+  Client0 = client(?AUTH_URL),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client0),
   % TTL is 1000ms for a cached entry, hence sleeping for 1050ms should
   % make the cached entry invalid.
   timer:sleep(1050),
-  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                           ?AUTH_URL,
-                                           <<"ID">>,
-                                           <<"SECRET">>,
-                                           undefined,
-                                          [{enable_cache, true}]),
+  % access_token is set to undefined to force oauth2c:request to look into cache
+  Client1 = Client0#client{access_token = undefined},
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client1),
   ?assertEqual(2, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
@@ -100,14 +85,11 @@ retrieve_cached_expired_access_token(_Config) ->
 retrieve_cached_token_burst(_Config) ->
   % The cache server should be able to handle multiple concurrent requests
   % and only perform a single token request.
+  Client0 = client(?AUTH_URL),
   N = 1000,
   Fun = fun() ->
-          oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                                  ?AUTH_URL,
-                                                  <<"ID">>,
-                                                  <<"SECRET">>,
-                                                  undefined,
-                                                  [{enable_cache, true}])
+          oauth2c:request(get, json, ?REQUEST_URL, [], [], [],
+                          [enable_cache], Client0)
         end,
   process_flag(trap_exit, true),
   [spawn_link(Fun) || _ <- lists:seq(1, N)],
@@ -118,21 +100,28 @@ retrieve_cached_token_burst(_Config) ->
                                 ])).
 
 retrieve_cached_token_burst_with_expire(_Config) ->
+  Client0 = client(?AUTH_URL),
   N = 1000,
-  Fun = fun() ->
-          oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                                  ?AUTH_URL,
-                                                  <<"ID">>,
-                                                  <<"SECRET">>,
-                                                  undefined,
-                                                  [{enable_cache, true}])
-        end,
+  Fun =
+  fun(M) ->
+    fun() ->
+        case M > 50 of
+          true ->
+            % Force oauth2c:request to look inside of the cache
+            Client = Client0#client{access_token = undefined},
+            oauth2c:request(get, json, ?REQUEST_URL, [], [], [],
+                           [enable_cache], Client);
+          _ ->
+            oauth2c:request(get, json, ?REQUEST_URL, [], [], [],
+                           [enable_cache], Client0)
+        end
+      end
+    end,
   process_flag(trap_exit, true),
   [case Num of
-    % Expire cached entry
-    50 -> timer:sleep(1050), spawn_link(Fun);
-    _ -> spawn_link(Fun)
-   end || Num <- lists:seq(1, N)],
+    51 -> timer:sleep(1050), spawn_link(Fun(Num));
+    _ -> spawn_link(Fun(Num))
+    end || Num <- lists:seq(1, N)],
   [receive {'EXIT', _, _} -> ok end || _ <- lists:seq(1, N - 1)],
   ?assertEqual(2, meck:num_calls(restc, request,
                                 [ post, percent,
@@ -140,34 +129,41 @@ retrieve_cached_token_burst_with_expire(_Config) ->
                                 ])).
 
 retrieve_cached_token_on_401(_Config) ->
-  {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                                  ?AUTH_URL,
-                                                  <<"ID">>,
-                                                  <<"SECRET">>,
-                                                  undefined,
-                                                  [{enable_cache, true}]),
-  Response = oauth2c:request(get, json,
-    ?REQUEST_URL, [], [], [], [enable_cache], Client),
-  ?assert(2 =:= meck:num_calls(restc, request,
+  Client0 = client(?AUTH_URL),
+  Response1 = oauth2c:request(get, json,
+    ?REQUEST_URL, [], [], [], [enable_cache], Client0),
+  ?assertMatch({{ok, 200, _, _}, _}, Response1),
+  {_, Client1} = Response1,
+  % Second call to request will return 401 and
+  % an automatic refresh av token should be triggered
+  Response2 = oauth2c:request(get, json,
+    ?REQUEST_URL, [], [], [], [enable_cache], Client1),
+  ?assertMatch({{ok, 401, _, _}, _}, Response2),
+  ?assertEqual(2, meck:num_calls(restc, request,
                               [ post, percent,
                                 ?AUTH_URL, '_', '_', '_', '_'
                               ])),
-  ?assertMatch({{ok, 200, _, _}, _}, Response),
-  {_, Client1} = Response,
-  ?assert(Client#client.expiry_time < Client1#client.expiry_time).
+  ?assertMatch({{ok, 200, _, _}, _}, Response1),
+  {_, Client1} = Response1,
+  {_, Client2} = Response2,
+  ?assert(Client1#client.expiry_time < Client2#client.expiry_time).
 
 retrieve_cached_token_on_401_burst(_Config) ->
-  {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
-                                                  ?AUTH_URL,
-                                                  <<"ID">>,
-                                                  <<"SECRET">>,
-                                                  undefined,
-                                                  [{enable_cache, true}]),
-  N = 1000,
-  Fun = fun() ->
-          Response = oauth2c:request(get, json,
+  Client = client(?AUTH_URL),
+  % First call to request will return a access token with expiry_time X,
+  % and this token will be cached.
+  {{ok, 200, _, _}, Client1} = oauth2c:request(get, json,
           ?REQUEST_URL, [], [], [], [enable_cache], Client),
-          ?assertMatch({{ok, 401, _, _}, Client}, Response)
+  N = 10,
+
+  % Subsequent calls to request will fail with 401, and
+  % the access token will automatically be refreshed by all N
+  % processes concurrently. However, only 1 of the N processes
+  % should request a new access token and the other N - 1 should
+  % use the token fetched by the one process.
+  Fun = fun() ->
+          {{ok, 401, _, _}, _} = oauth2c:request(get, json,
+          ?REQUEST_URL, [], [], [], [enable_cache], Client1)
         end,
   process_flag(trap_exit, true),
   [spawn_link(Fun) || _ <- lists:seq(1, N)],
@@ -175,10 +171,17 @@ retrieve_cached_token_on_401_burst(_Config) ->
   ?assertEqual(2, meck:num_calls(restc, request,
                             [ post, percent,
                               ?AUTH_URL, '_', '_', '_', '_'
-                            ])).
-
-
-
+                            ])),
+  ?assertEqual(N * 2 + 1, meck:num_calls(restc, request,
+                          [ get, json,
+                            ?REQUEST_URL, '_', '_', '_', '_'
+                          ])),
+  % Perform a final call to request to get back the currently cached
+  % token and make sure that it has indeed been updated by 1 of the N
+  % processes,
+  {{ok, 401, _, _}, Client2} = oauth2c:request(get, json,
+    ?REQUEST_URL, [], [], [], [enable_cache], Client1),
+  ?assert(Client1#client.expiry_time < Client2#client.expiry_time).
 
 fetch_access_token_and_do_request(_Config) ->
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
@@ -227,6 +230,8 @@ mock_http_requests() ->
                   Body = [{<<"access_token">>, <<"invalid">>},
                           {<<"token_type">>, <<"bearer">>}],
                   {ok, 200, [], Body};
+                 (get, json, ?REQUEST_URL_401, _, _, _, _) ->
+                  {ok, 401, [], []};
                  (get, json, _, _, Headers, _, _) ->
                   ValidToken = ?HEADERS(?VALID_TOKEN),
                   case Headers of
@@ -239,24 +244,24 @@ mock_http_request_401() ->
   meck:expect(restc, request,
     [
       {[post, percent, ?AUTH_URL, [200], '_', '_', '_'],
-        meck:loop([
-          {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
+        meck:seq([
+          {ok, 200, [], [{<<"access_token">>, <<"token1">>},
                           {<<"expiry_time">>, erlang:system_time(second) + 1},
                           {<<"token_type">>, <<"bearer">>}]},
-          {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
+          {ok, 200, [], [{<<"access_token">>, <<"token2">>},
                           {<<"expiry_time">>, erlang:system_time(second) + 10},
                           {<<"token_type">>, <<"bearer">>}]}
         ])
       },
-        {[get, json, ?REQUEST_URL, '_', '_', '_', '_'],
-          meck:loop([
-            {ok, 401, [], [{<<"access_token">>, <<"invalid">>},
-                          {<<"token_type">>, <<"bearer">>}]},
-            {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
-                          {<<"expiry_time">>, erlang:system_time(second) + 1},
-                          {<<"token_type">>, <<"bearer">>}]}
-          ])
-        }
+      {[get, json, ?REQUEST_URL, '_', '_', '_', '_'],
+        meck:seq([
+          {ok, 200, [], [{<<"access_token">>, <<"invalid">>},
+                        {<<"token_type">>, <<"bearer">>}]},
+          {ok, 401, [], [{<<"access_token">>, ?VALID_TOKEN},
+                        {<<"expiry_time">>, erlang:system_time(second) + 1},
+                        {<<"token_type">>, <<"bearer">>}]}
+        ])
+      }
     ]
   ).
 
@@ -265,21 +270,31 @@ mock_http_request_401_burst() ->
   meck:expect(restc, request,
     [
       {[post, percent, ?AUTH_URL, [200], '_', '_', '_'],
-        meck:loop([
+        meck:seq([
           {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
-                          {<<"expiry_time">>, Now + 1},
+                          {<<"expiry_time">>, Now + 10},
                           {<<"token_type">>, <<"bearer">>}]},
           {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
-                          {<<"expiry_time">>, Now + 5},
+                          {<<"expiry_time">>, Now + 20},
                           {<<"token_type">>, <<"bearer">>}]}
         ])
       },
       {[get, json, ?REQUEST_URL, '_', '_', '_', '_'],
-            {ok, 401, [], [{<<"access_token">>, <<"invalid">>},
-                          {<<"token_type">>, <<"bearer">>}]}
+        meck:seq([
+            {ok, 200, [], []},
+            {ok, 401, [], []}
+        ])
       }
     ]
   ).
+
+
+
+client(Url) ->
+oauth2c:client( <<"client_credentials">>
+              , Url
+              , <<"client_id">>
+              , <<"client_secret">>).
 
 %_* Editor ===================================================================
 % Local Variables:
