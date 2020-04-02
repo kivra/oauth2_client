@@ -16,7 +16,7 @@
 -export([start_link/1]).
 -export([get/1]).
 -export([set_and_get/2]).
--export([delete_token/2]).
+-export([set_and_get/3]).
 
 %% gen_server
 -export([init/1]).
@@ -57,17 +57,10 @@ start_link(DefaultTTL) ->
 -spec get(integer()) -> [{headers(), client()}].
 get(Key) ->
   Now = erlang:system_time(second),
-  case get_cached_token(Key,
-                        Now,
-                        ets:lookup(?TOKEN_CACHE_ID, Key))
-  of
-    [{Header, Result}] -> [{Header, Result}];
-    [] -> []
-  end.
+  get_cached_token(Key,
+                   Now,
+                   ets:lookup(?TOKEN_CACHE_ID, Key)).
 
--spec delete_token(integer(), integer()) -> atom().
-delete_token(Key, ExpiryTime) ->
-  gen_server:call(?MODULE, {delete, Key, ExpiryTime}).
 
 -spec set_and_get(Key, LazyValue) -> Value | Error when
     Key :: integer(),
@@ -75,7 +68,16 @@ delete_token(Key, ExpiryTime) ->
     Value :: {ok, headers(), client()},
     Error :: {error, binary()}.
 set_and_get(Key, LazyValue) ->
-  gen_server:call(?MODULE, {set_and_get, Key, LazyValue}).
+  set_and_get(Key, LazyValue, undefined).
+
+-spec set_and_get(Key, LazyValue, GivenExpiryTime) -> Value | Error when
+    Key :: integer(),
+    LazyValue :: fun(() -> Value | Error),
+    GivenExpiryTime :: integer(),
+    Value :: {ok, headers(), client()},
+    Error :: {error, binary()}.
+set_and_get(Key, LazyValue, GivenExpiryTime) ->
+  gen_server:call(?MODULE, {set_and_get, Key, LazyValue, GivenExpiryTime}).
 
 -spec clear() -> true.
 clear() ->
@@ -89,36 +91,31 @@ init(State) ->
   {ok, State}.
 
 handle_call({set_and_get, Key, LazyValue, GivenExpiryTime}, _From,
-            State = #{default_ttl := DefaultTTL}) ->
-  Now = erlang:system_time(second),
-  case get_cached_token( Key
-                       , Now
-                       , ets:lookup(?TOKEN_CACHE_ID, Key)) of
-    [{Header, Result}] ->
-      {reply, [{Header, Result}], State};
-    [] ->
-      case LazyValue() of
-        {ok, Header, Result = #client{expiry_time = ExpiryTime0}} ->
-          ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
-          ets:insert(?TOKEN_CACHE_ID,
-            {Key, {Header, Result#client{expiry_time = ExpiryTime}}}),
-          {reply, {ok, Header, Result}, State};
-        {error, Reason} -> {reply, {error, Reason}, State}
-      end
-  end;
-
-handle_call({delete, Key, ExpiryTime}, _From, State) ->
+  State = #{default_ttl := DefaultTTL}) ->
   % The expiry time of the token the user wishes to delete
   % is needed in order to uniquely indentify a cached access token.
   % It could be the case that the token the user wishes to delete has
   % already been deleted and refreshed by a concurrent thread. If we would
   % not use the ExpireTime, we cold accidently delete a valid refreshed token.
-  case ets:lookup(?TOKEN_CACHE_ID, Key) of
-    [{Key, {_, #client{expiry_time = ExpiryTime}}}] ->
-      ets:delete(?TOKEN_CACHE_ID, Key);
-    _ -> ok
-  end,
-  {reply, ok, State}.
+  Now = erlang:system_time(second),
+  case get_cached_token( Key
+                       , Now
+                       , ets:lookup(?TOKEN_CACHE_ID, Key))
+  of
+    {ok, Result = #client{expiry_time = ThisExpiryTime}}
+      when GivenExpiryTime =:= undefined orelse
+           ThisExpiryTime > GivenExpiryTime ->
+      {reply, {ok, Result}, State};
+    _ ->
+      case LazyValue() of
+        {ok, Result = #client{expiry_time = ExpiryTime0}} ->
+          ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
+          ets:insert(?TOKEN_CACHE_ID,
+            {Key, Result#client{expiry_time = ExpiryTime}}),
+          {reply, {ok, Result}, State};
+        {error, Reason} -> {reply, {error, Reason}, State}
+      end
+  end.
 
 handle_cast(_, State) -> {noreply, State}.
 
@@ -126,10 +123,10 @@ handle_cast(_, State) -> {noreply, State}.
 
 get_cached_token( Key
                 , Now
-                , [{Key, {Header, Result = #client{expiry_time = ExpiryTime}}}]
+                , [{Key, Result = #client{expiry_time = ExpiryTime}}]
                 ) when ExpiryTime > Now ->
-  [{Header, Result}];
-get_cached_token(_Key, _Now, _) -> [].
+  {ok, Result};
+get_cached_token(_Key, _Now, _) -> {error, not_found}.
 
 get_expiry_time(undefined, DefaultTTL) ->
   erlang:system_time(second) + DefaultTTL;
@@ -163,10 +160,12 @@ get_expiry_time_test_() ->
       end
   ||
       {Input, Expected} <-[
-          {{k1, 100, [{k1, {[], #client{expiry_time = 101}}}]},
-            [{[], #client{expiry_time = 101}}]},
-          {{k1, 100, [{k1, {[], #client{expiry_time = 99}}}]}, []},
-          {{k1, 100, [{k2, {[], #client{expiry_time = 101}}}]}, []}
+          {{k1, 100, [{k1, #client{expiry_time = 101}}],
+            {ok, #client{expiry_time = 101}}}},
+          {{k1, 100, [{k1, {[], #client{expiry_time = 99}}}]},
+            {error, not_found}},
+          {{k1, 100, [{k2, {[], #client{expiry_time = 101}}}]},
+            {error, not_found}}
       ]
   ].
 

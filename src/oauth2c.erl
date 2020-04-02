@@ -168,7 +168,8 @@ request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
   Client1 = ensure_client_has_access_token(Client0, Options),
   case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) of
     {{_, 401, _, _}, Client2} ->
-      Client3 = get_access_token(Client2, Options),
+      {ok, Client3} = get_access_token(Client2#client{access_token = undefined},
+                                      [force_revalidate | Options]),
       do_request(Method, Type, Url, Expect, Headers, Body, Options, Client3);
     Result -> Result
   end.
