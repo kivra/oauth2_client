@@ -112,15 +112,18 @@ handle_cast(_, State) -> {noreply, State}.
 
 get_token(Key) ->
   get_token(Key, undefined).
-get_token(Key, ExpiryTimeNotGreaterThan) ->
+get_token(Key, ExpiryTimeLowerLimit) ->
   Now = erlang:system_time(second),
   case ets:lookup(?TOKEN_CACHE_ID, Key)
   of
+    % Only return cache entry if
+    % (1) It has not expired
+    % (2) Its expiry time is greater than ExpiryTimeLowerLimit
     [{Key, Result, ExpiryTime}] when ExpiryTime > Now
                                      andalso
-                                     (ExpiryTimeNotGreaterThan =:= undefined
+                                     (ExpiryTimeLowerLimit =:= undefined
                                      orelse
-                                     ExpiryTime > ExpiryTimeNotGreaterThan) ->
+                                     ExpiryTime > ExpiryTimeLowerLimit) ->
       {ok, Result};
     _ ->
       {error, not_found}
