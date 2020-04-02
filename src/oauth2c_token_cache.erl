@@ -32,8 +32,6 @@
 
 %%%_* Includes =========================================================
 
--include("oauth2c.hrl").
-
 %%%_* Code =============================================================
 %%%_ * Types -----------------------------------------------------------
 %%%_ * API -------------------------------------------------------------
@@ -54,30 +52,33 @@ start_link(DefaultTTL) ->
   gen_server:start_link({local, ?SERVER}, ?SERVER,
                         #{default_ttl => DefaultTTL}, []).
 
--spec get(integer()) -> [{headers(), client()}].
+-spec get(integer()) -> {error, atom()} | {ok, term()}.
 get(Key) ->
   Now = erlang:system_time(second),
-  get_cached_token(Key,
+  case get_cached_token(Key,
                    Now,
-                   ets:lookup(?TOKEN_CACHE_ID, Key)).
-
+                   ets:lookup(?TOKEN_CACHE_ID, Key))
+  of
+    {ok, Result, _ExpiryTime} -> {ok, Result};
+    {error, Reason} -> {error, Reason}
+  end.
 
 -spec set_and_get(Key, LazyValue) -> Value | Error when
     Key :: integer(),
     LazyValue :: fun(() -> Value | Error),
-    Value :: {ok, headers(), client()},
+    Value :: {ok, term()},
     Error :: {error, binary()}.
 set_and_get(Key, LazyValue) ->
-  set_and_get(Key, LazyValue, undefined).
+  set_and_get(Key, LazyValue, []).
 
--spec set_and_get(Key, LazyValue, GivenExpiryTime) -> Value | Error when
+-spec set_and_get(Key, LazyValue, Options) -> Value | Error when
     Key :: integer(),
     LazyValue :: fun(() -> Value | Error),
-    GivenExpiryTime :: integer(),
-    Value :: {ok, headers(), client()},
-    Error :: {error, binary()}.
-set_and_get(Key, LazyValue, GivenExpiryTime) ->
-  gen_server:call(?MODULE, {set_and_get, Key, LazyValue, GivenExpiryTime}).
+    Options :: list(),
+    Value :: {ok,  term()},
+    Error :: {error, atom()}.
+set_and_get(Key, LazyValue, Options) ->
+  gen_server:call(?SERVER, {set_and_get, Key, LazyValue, Options}).
 
 -spec clear() -> true.
 clear() ->
@@ -90,8 +91,12 @@ init(State) ->
   ets:new(?TOKEN_CACHE_ID, EtsOpts),
   {ok, State}.
 
-handle_call({set_and_get, Key, LazyValue, GivenExpiryTime}, _From,
+handle_call({set_and_get, Key, LazyValue, Options}, _From,
   State = #{default_ttl := DefaultTTL}) ->
+  ForceUpdateLimit =
+    proplists:get_value(force_update_entries_older_or_equal_than,
+                        Options,
+                        undefined),
   % The expiry time of the token the user wishes to delete
   % is needed in order to uniquely indentify a cached access token.
   % It could be the case that the token the user wishes to delete has
@@ -102,16 +107,16 @@ handle_call({set_and_get, Key, LazyValue, GivenExpiryTime}, _From,
                        , Now
                        , ets:lookup(?TOKEN_CACHE_ID, Key))
   of
-    {ok, Result = #client{expiry_time = ThisExpiryTime}}
-      when GivenExpiryTime =:= undefined orelse
-           ThisExpiryTime > GivenExpiryTime ->
+    {ok, Result, ThisExpiryTime}
+      when ForceUpdateLimit =:= undefined orelse
+           (ThisExpiryTime > ForceUpdateLimit) ->
       {reply, {ok, Result}, State};
     _ ->
       case LazyValue() of
-        {ok, Result = #client{expiry_time = ExpiryTime0}} ->
+        {ok, Result, ExpiryTime0} ->
           ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
           ets:insert(?TOKEN_CACHE_ID,
-            {Key, Result#client{expiry_time = ExpiryTime}}),
+            {Key, Result, ExpiryTime}),
           {reply, {ok, Result}, State};
         {error, Reason} -> {reply, {error, Reason}, State}
       end
@@ -123,9 +128,9 @@ handle_cast(_, State) -> {noreply, State}.
 
 get_cached_token( Key
                 , Now
-                , [{Key, Result = #client{expiry_time = ExpiryTime}}]
+                , [{Key, Result, ExpiryTime}]
                 ) when ExpiryTime > Now ->
-  {ok, Result};
+  {ok, Result, ExpiryTime};
 get_cached_token(_Key, _Now, _) -> {error, not_found}.
 
 get_expiry_time(undefined, DefaultTTL) ->
@@ -160,11 +165,11 @@ get_expiry_time_test_() ->
       end
   ||
       {Input, Expected} <-[
-          {{k1, 100, [{k1, #client{expiry_time = 101}}],
-            {ok, #client{expiry_time = 101}}}},
-          {{k1, 100, [{k1, {[], #client{expiry_time = 99}}}]},
+          {{k1, 100, [{k1, c, 101}]},
+            {ok, c, 101}},
+          {{k1, 100, [{k1, c, 99}]},
             {error, not_found}},
-          {{k1, 100, [{k2, {[], #client{expiry_time = 101}}}]},
+          {{k1, 100, [{k2, c, 101}]},
             {error, not_found}}
       ]
   ].

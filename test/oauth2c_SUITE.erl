@@ -18,16 +18,16 @@
 
 groups() -> [].
 
-all() -> [% retrieve_access_token
-         %, fetch_access_token_on_request
-         %, fetch_access_token_on_request
-         %, fetch_new_token_on_401
-         %, retrieve_cached_access_token
-         %, retrieve_cached_expired_access_token
-         %, retrieve_cached_token_burst
-         %, retrieve_cached_token_burst_with_expire
-         %retrieve_cached_token_on_401
-          retrieve_cached_token_on_401_burst
+all() -> [ retrieve_access_token
+         , fetch_access_token_on_request
+         , fetch_access_token_on_request
+         , fetch_new_token_on_401
+         , retrieve_cached_access_token
+         , retrieve_cached_expired_access_token
+         , retrieve_cached_token_burst
+         , retrieve_cached_token_burst_with_expire
+         , retrieve_cached_token_on_401
+         , retrieve_cached_token_on_401_burst
          ].
 
 init_per_suite(Config) ->

@@ -324,7 +324,7 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
 retrieve_access_token_fun(Client0, Options) ->
   fun() ->
       case do_retrieve_access_token(Client0, Options) of
-        {ok, _Headers, Client} -> {ok, Client};
+        {ok, _Headers, Client} -> {ok, Client, Client#client.expiry_time};
         {error, Reason} -> {error, Reason}
       end
   end.
@@ -348,7 +348,8 @@ get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
     {true, true} ->
       Key = hash_client(Client0),
       RevalidateFun = retrieve_access_token_fun(Client0, Options),
-      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiryTime)
+      oauth2c_token_cache:set_and_get(Key, RevalidateFun,
+        [{force_update_entries_older_or_equal_than, ExpiryTime}])
   end.
 
 hash_client(#client{grant_type = Type,
