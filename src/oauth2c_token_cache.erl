@@ -30,8 +30,6 @@
 -define(SERVER, ?MODULE).
 -define(TOKEN_CACHE_ID, token_cache_id).
 
-%%%_* Includes =========================================================
-
 %%%_* Code =============================================================
 %%%_ * Types -----------------------------------------------------------
 %%%_ * API -------------------------------------------------------------
@@ -54,14 +52,7 @@ start_link(DefaultTTL) ->
 
 -spec get(integer()) -> {error, atom()} | {ok, term()}.
 get(Key) ->
-  Now = erlang:system_time(second),
-  case get_cached_token(Key,
-                   Now,
-                   ets:lookup(?TOKEN_CACHE_ID, Key))
-  of
-    {ok, Result, _ExpiryTime} -> {ok, Result};
-    {error, Reason} -> {error, Reason}
-  end.
+  get_token(Key).
 
 -spec set_and_get(Key, LazyValue) -> Value | Error when
     Key :: integer(),
@@ -93,25 +84,18 @@ init(State) ->
 
 handle_call({set_and_get, Key, LazyValue, Options}, _From,
   State = #{default_ttl := DefaultTTL}) ->
+  % ForceUpdateLimit is used to solve a race-condition
+  % that occurs when multiple processes are trying to
+  % replace an old token (i.e. the new token has a larger
+  % expiry time than the old token).
   ForceUpdateLimit =
     proplists:get_value(force_update_entries_older_or_equal_than,
                         Options,
                         undefined),
-  % The expiry time of the token the user wishes to delete
-  % is needed in order to uniquely indentify a cached access token.
-  % It could be the case that the token the user wishes to delete has
-  % already been deleted and refreshed by a concurrent thread. If we would
-  % not use the ExpireTime, we cold accidently delete a valid refreshed token.
-  Now = erlang:system_time(second),
-  case get_cached_token( Key
-                       , Now
-                       , ets:lookup(?TOKEN_CACHE_ID, Key))
-  of
-    {ok, Result, ThisExpiryTime}
-      when ForceUpdateLimit =:= undefined orelse
-           (ThisExpiryTime > ForceUpdateLimit) ->
+  case get_token(Key, ForceUpdateLimit) of
+    {ok, Result} ->
       {reply, {ok, Result}, State};
-    _ ->
+    {error, not_found} ->
       case LazyValue() of
         {ok, Result, ExpiryTime0} ->
           ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
@@ -126,12 +110,21 @@ handle_cast(_, State) -> {noreply, State}.
 
 %%%_ * Private functions -----------------------------------------------
 
-get_cached_token( Key
-                , Now
-                , [{Key, Result, ExpiryTime}]
-                ) when ExpiryTime > Now ->
-  {ok, Result, ExpiryTime};
-get_cached_token(_Key, _Now, _) -> {error, not_found}.
+get_token(Key) ->
+  get_token(Key, undefined).
+get_token(Key, ExpiryTimeNotGreaterThan) ->
+  Now = erlang:system_time(second),
+  case ets:lookup(?TOKEN_CACHE_ID, Key)
+  of
+    [{Key, Result, ExpiryTime}] when ExpiryTime > Now
+                                     andalso
+                                     (ExpiryTimeNotGreaterThan =:= undefined
+                                     orelse
+                                     ExpiryTime > ExpiryTimeNotGreaterThan) ->
+      {ok, Result};
+    _ ->
+      {error, not_found}
+  end.
 
 get_expiry_time(undefined, DefaultTTL) ->
   erlang:system_time(second) + DefaultTTL;
@@ -153,24 +146,6 @@ get_expiry_time_test_() ->
   ||
       {Input, Expected} <-[
           {{1, 100}, 1}
-      ]
-  ].
-
-  get_cached_token_test_() ->
-  [
-      fun() ->
-          {Key, Now, Token} = Input,
-          Actual = get_cached_token(Key, Now, Token),
-          ?assertEqual(Expected, Actual)
-      end
-  ||
-      {Input, Expected} <-[
-          {{k1, 100, [{k1, c, 101}]},
-            {ok, c, 101}},
-          {{k1, 100, [{k1, c, 99}]},
-            {error, not_found}},
-          {{k1, 100, [{k2, c, 101}]},
-            {error, not_found}}
       ]
   ].
 
