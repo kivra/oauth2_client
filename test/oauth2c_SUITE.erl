@@ -61,8 +61,8 @@ retrieve_access_token(_Config) ->
 
 retrieve_cached_access_token(_Config) ->
   Client = client(?AUTH_URL),
-  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client),
-  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [cache_token], Client),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [cache_token], Client),
   ?assertEqual(1, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
@@ -70,13 +70,13 @@ retrieve_cached_access_token(_Config) ->
 
 retrieve_cached_expired_access_token(_Config) ->
   Client0 = client(?AUTH_URL),
-  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client0),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [cache_token], Client0),
   % TTL is 1000ms for a cached entry, hence sleeping for 1050ms should
   % make the cached entry invalid.
   timer:sleep(1050),
   % access_token is set to undefined to force oauth2c:request to look into cache
   Client1 = Client0#client{access_token = undefined},
-  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [enable_cache], Client1),
+  oauth2c:request(get, json, ?REQUEST_URL, [], [], [], [cache_token], Client1),
   ?assertEqual(2, meck:num_calls(restc, request,
                                 [ post, percent,
                                   ?AUTH_URL, '_', '_', '_', '_'
@@ -89,7 +89,7 @@ retrieve_cached_token_burst(_Config) ->
   N = 1000,
   Fun = fun() ->
           oauth2c:request(get, json, ?REQUEST_URL, [], [], [],
-                          [enable_cache], Client0)
+                          [cache_token], Client0)
         end,
   process_flag(trap_exit, true),
   [spawn_link(Fun) || _ <- lists:seq(1, N)],
@@ -110,10 +110,10 @@ retrieve_cached_token_burst_with_expire(_Config) ->
             % Force oauth2c:request to look inside of the cache
             Client = Client0#client{access_token = undefined},
             oauth2c:request(get, json, ?REQUEST_URL, [], [], [],
-                           [enable_cache], Client);
+                           [cache_token], Client);
           _ ->
             oauth2c:request(get, json, ?REQUEST_URL, [], [], [],
-                           [enable_cache], Client0)
+                           [cache_token], Client0)
         end
       end
     end,
@@ -131,13 +131,13 @@ retrieve_cached_token_burst_with_expire(_Config) ->
 retrieve_cached_token_on_401(_Config) ->
   Client0 = client(?AUTH_URL),
   Response1 = oauth2c:request(get, json,
-    ?REQUEST_URL, [], [], [], [enable_cache], Client0),
+    ?REQUEST_URL, [], [], [], [cache_token], Client0),
   ?assertMatch({{ok, 200, _, _}, _}, Response1),
   {_, Client1} = Response1,
   % Second call to request will return 401 and
   % an automatic refresh av token should be triggered
   Response2 = oauth2c:request(get, json,
-    ?REQUEST_URL, [], [], [], [enable_cache], Client1),
+    ?REQUEST_URL, [], [], [], [cache_token], Client1),
   ?assertMatch({{ok, 401, _, _}, _}, Response2),
   ?assertEqual(2, meck:num_calls(restc, request,
                               [ post, percent,
@@ -153,7 +153,7 @@ retrieve_cached_token_on_401_burst(_Config) ->
   % First call to request will return a access token with expiry_time X,
   % and this token will be cached.
   {{ok, 200, _, _}, Client1} = oauth2c:request(get, json,
-          ?REQUEST_URL, [], [], [], [enable_cache], Client),
+          ?REQUEST_URL, [], [], [], [cache_token], Client),
   N = 10,
 
   % Subsequent calls to request will fail with 401, and
@@ -163,7 +163,7 @@ retrieve_cached_token_on_401_burst(_Config) ->
   % use the token fetched by the one process.
   Fun = fun() ->
           {{ok, 401, _, _}, _} = oauth2c:request(get, json,
-          ?REQUEST_URL, [], [], [], [enable_cache], Client1)
+          ?REQUEST_URL, [], [], [], [cache_token], Client1)
         end,
   process_flag(trap_exit, true),
   [spawn_link(Fun) || _ <- lists:seq(1, N)],
@@ -180,7 +180,7 @@ retrieve_cached_token_on_401_burst(_Config) ->
   % token and make sure that it has indeed been updated by 1 of the N
   % processes,
   {{ok, 401, _, _}, Client2} = oauth2c:request(get, json,
-    ?REQUEST_URL, [], [], [], [enable_cache], Client1),
+    ?REQUEST_URL, [], [], [], [cache_token], Client1),
   ?assert(Client1#client.expiry_time < Client2#client.expiry_time).
 
 fetch_access_token_and_do_request(_Config) ->

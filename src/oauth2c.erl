@@ -330,7 +330,7 @@ retrieve_access_token_fun(Client0, Options) ->
   end.
 
 get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
-  case {proplists:get_value(enable_cache, Options, false),
+  case {proplists:get_value(cache_token, Options, false),
         proplists:get_value(force_revalidate, Options, false)}
   of
     {false, _} ->
