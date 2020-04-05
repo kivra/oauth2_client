@@ -60,16 +60,19 @@ get(Key) ->
     Value :: {ok, term()},
     Error :: {error, binary()}.
 set_and_get(Key, LazyValue) ->
-  set_and_get(Key, LazyValue, []).
+  set_and_get(Key, LazyValue, undefined).
 
--spec set_and_get(Key, LazyValue, Options) -> Value | Error when
+-spec set_and_get(Key, LazyValue, CurrenTokenExpiryTime) -> Value | Error when
     Key :: integer(),
     LazyValue :: fun(() -> Value | Error),
-    Options :: list(),
+    CurrenTokenExpiryTime :: integer() | undefined,
     Value :: {ok,  term()},
     Error :: {error, atom()}.
-set_and_get(Key, LazyValue, Options) ->
-  gen_server:call(?SERVER, {set_and_get, Key, LazyValue, Options}).
+set_and_get(Key, LazyValue, CurrenTokenExpiryTime) ->
+  gen_server:call(?SERVER, {set_and_get,
+                            Key,
+                            LazyValue,
+                            CurrenTokenExpiryTime}).
 
 -spec clear() -> true.
 clear() ->
@@ -82,17 +85,14 @@ init(State) ->
   ets:new(?TOKEN_CACHE_ID, EtsOpts),
   {ok, State}.
 
-handle_call({set_and_get, Key, LazyValue, Options}, _From,
+handle_call({set_and_get, Key, LazyValue,
+            CurrenTokenExpiryTime}, _From,
             State = #{default_ttl := DefaultTTL}) ->
-  % ForceUpdateLimit is used to solve a race-condition
+  % CurrenTokenExpiryTime is used to solve a race-condition
   % that occurs when multiple processes are trying to
   % replace an old token (i.e. the new token has a larger
   % expiry time than the old token).
-  ForceUpdateLimit =
-    proplists:get_value(force_update_entries_older_or_equal_than,
-                        Options,
-                        undefined),
-  case get_token(Key, ForceUpdateLimit) of
+  case get_token(Key, CurrenTokenExpiryTime) of
     {ok, Result} ->
       {reply, {ok, Result}, State};
     {error, not_found} ->

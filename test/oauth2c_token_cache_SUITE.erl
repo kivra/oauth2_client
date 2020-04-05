@@ -75,11 +75,8 @@ overwrite_and_get_token(_Config) ->
                                         LazyToken1),
   Res2 = oauth2c_token_cache:set_and_get(?FUNCTION_NAME,
                                         LazyToken2),
-  Res3 =
-    oauth2c_token_cache:set_and_get(?FUNCTION_NAME,
-                                    LazyToken3,
-                                    [{force_update_entries_older_or_equal_than,
-                                      ExpiryTime2}]),
+  Res3 = oauth2c_token_cache:set_and_get(?FUNCTION_NAME,
+                                        LazyToken3, ExpiryTime2),
   [
     ?assertMatch({ok, Client1}, Res1),
     ?assertMatch({ok, Client1}, Res2),

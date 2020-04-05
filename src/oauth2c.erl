@@ -348,8 +348,7 @@ get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
     {true, true} ->
       Key = hash_client(Client0),
       RevalidateFun = retrieve_access_token_fun(Client0, Options),
-      oauth2c_token_cache:set_and_get(Key, RevalidateFun,
-        [{force_update_entries_older_or_equal_than, ExpiryTime}])
+      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiryTime)
   end.
 
 hash_client(#client{grant_type = Type,
