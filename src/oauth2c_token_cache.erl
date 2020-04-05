@@ -83,7 +83,7 @@ init(State) ->
   {ok, State}.
 
 handle_call({set_and_get, Key, LazyValue, Options}, _From,
-  State = #{default_ttl := DefaultTTL}) ->
+            State = #{default_ttl := DefaultTTL}) ->
   % ForceUpdateLimit is used to solve a race-condition
   % that occurs when multiple processes are trying to
   % replace an old token (i.e. the new token has a larger
@@ -99,8 +99,7 @@ handle_call({set_and_get, Key, LazyValue, Options}, _From,
       case LazyValue() of
         {ok, Result, ExpiryTime0} ->
           ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
-          ets:insert(?TOKEN_CACHE_ID,
-            {Key, Result, ExpiryTime}),
+          ets:insert(?TOKEN_CACHE_ID, {Key, Result, ExpiryTime}),
           {reply, {ok, Result}, State};
         {error, Reason} -> {reply, {error, Reason}, State}
       end
@@ -122,8 +121,8 @@ get_token(Key, ExpiryTimeLowerLimit) ->
     [{Key, Result, ExpiryTime}] when ExpiryTime > Now
                                      andalso
                                      (ExpiryTimeLowerLimit =:= undefined
-                                     orelse
-                                     ExpiryTime > ExpiryTimeLowerLimit) ->
+                                      orelse
+                                      ExpiryTime > ExpiryTimeLowerLimit) ->
       {ok, Result};
     _ ->
       {error, not_found}
@@ -140,16 +139,12 @@ get_expiry_time(ExpiryTime, _DefaultTTL) ->
 -include_lib("eunit/include/eunit.hrl").
 
 get_expiry_time_test_() ->
-  [
-      fun() ->
-          {T, Default} = Input,
-          Actual = get_expiry_time(T, Default),
-          ?assertEqual(Expected, Actual)
-      end
-  ||
-      {Input, Expected} <-[
-          {{1, 100}, 1}
-      ]
+  [fun() ->
+       {T, Default} = Input,
+       Actual = get_expiry_time(T, Default),
+       ?assertEqual(Expected, Actual)
+   end
+   || {Input, Expected} <- [{{1, 100}, 1}]
   ].
 
 -endif.
