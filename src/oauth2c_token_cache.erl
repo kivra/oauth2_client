@@ -26,7 +26,7 @@
 
 %%%_* Macros =========================================================
 
--define(DEFAULT_TTL, 3600). % Default cache entry TTL in seconds.
+-define(DEFAULT_TTL, 300). % Default cache entry TTL in seconds.
 -define(SERVER, ?MODULE).
 -define(TOKEN_CACHE_ID, token_cache_id).
 
