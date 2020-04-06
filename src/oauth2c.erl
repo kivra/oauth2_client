@@ -41,51 +41,9 @@
 -export([request/8]).
 
 -define(DEFAULT_ENCODING, json).
+-define(TOKEN_CACHE_SERVER, oauth2c_token_cache).
 
--record(client, {
-        grant_type    = undefined :: binary()     | undefined,
-        auth_url      = undefined :: binary()     | undefined,
-        access_token  = undefined :: binary()     | undefined,
-        token_type    = undefined :: token_type() | undefined,
-        refresh_token = undefined :: binary()     | undefined,
-        id            = undefined :: binary()     | undefined,
-        secret        = undefined :: binary()     | undefined,
-        scope         = undefined :: binary()     | undefined
-}).
-
--type method()         :: head    |
-                          get     |
-                          put     |
-                          patch   |
-                          post    |
-                          trace   |
-                          options |
-                          delete.
--type url()            :: binary().
-%% <<"password">> or <<"client_credentials">>
--type at_type()        :: binary().
--type headers()        :: [header()].
--type header()         :: {binary(), binary()}.
--type status_codes()   :: [status_code()].
--type status_code()    :: integer().
--type reason()         :: term().
--type content_type()   :: json | xml | percent.
--type property()       :: atom() | tuple().
--type proplist()       :: [property()].
--type options()        :: proplist().
--type body()           :: proplist().
--type restc_response() :: { ok
-                          , Status::status_code()
-                          , Headers::headers()
-                          , Body::body()}          |
-                          { error
-                          , Status::status_code()
-                          , Headers::headers()
-                          , Body::body()}          |
-                          { error, Reason::reason()}.
--type response()       :: {restc_response(), #client{}}.
--type token_type()     :: bearer | unsupported.
--type client()         :: #client{}.
+-include("oauth2c.hrl").
 
 %%% API ========================================================================
 
@@ -137,7 +95,7 @@ retrieve_access_token(Type, Url, ID, Secret, Scope) ->
     ID      :: binary(),
     Secret  :: binary(),
     Scope   :: binary() | undefined,
-    Options :: list().
+    Options :: options().
 retrieve_access_token(Type, Url, ID, Secret, Scope, Options) ->
   Client = #client{
               grant_type = Type
@@ -205,15 +163,28 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
     Body    :: body(),
     Options :: options(),
     Client  :: client().
-request(Method, Type, Url, Expect, Headers, Body, Options, Client) ->
-  case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client) of
+
+request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
+  Client1 = ensure_client_has_access_token(Client0, Options),
+  case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) of
     {{_, 401, _, _}, Client2} ->
-      {ok, _RetrHeaders, Client3} =
-        do_retrieve_access_token(Client2, Options),
-      do_request(Method,Type,Url,Expect,Headers,Body,Options,Client3);
+      {ok, Client3} = get_access_token(Client2#client{access_token = undefined},
+                                      [force_revalidate | Options]),
+      do_request(Method, Type, Url, Expect, Headers, Body, Options, Client3);
     Result -> Result
   end.
+
 %%% INTERNAL ===================================================================
+
+ensure_client_has_access_token(Client0, Options) ->
+  case Client0 of
+    #client{access_token = undefined} ->
+      {ok, Client} = get_access_token(Client0, Options),
+      Client;
+    _ ->
+      Client0
+  end.
+
 do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
   Payload0 = [
               {<<"grant_type">>, Client#client.grant_type}
@@ -231,6 +202,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
+      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
       Result = case RefreshToken of
                  undefined ->
                    #client{
@@ -240,6 +212,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
                      ,id           = Client#client.id
                      ,secret       = Client#client.secret
                      ,scope        = Client#client.scope
+                     ,expiry_time  = ExpiryTime
                      };
                  _ ->
                    #client{
@@ -248,6 +221,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
                      ,access_token  = AccessToken
                      ,refresh_token = RefreshToken
                      ,scope         = Client#client.scope
+                     ,expiry_time  = ExpiryTime
                      }
                end,
       {ok, Headers, Result};
@@ -272,6 +246,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
       Result = #client{
                   grant_type    = Client#client.grant_type
                  ,auth_url     = Client#client.auth_url
@@ -280,6 +255,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                  ,id           = Client#client.id
                  ,secret       = Client#client.secret
                  ,scope        = Client#client.scope
+                 ,expiry_time  = ExpiryTime
                  },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
@@ -303,6 +279,7 @@ do_retrieve_access_token(#client{grant_type = <<"azure_client_credentials">>,
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
       Result = #client{
                   grant_type    = Client#client.grant_type
                  ,auth_url     = Client#client.auth_url
@@ -311,6 +288,7 @@ do_retrieve_access_token(#client{grant_type = <<"azure_client_credentials">>,
                  ,id           = Client#client.id
                  ,secret       = Client#client.secret
                  ,scope        = Client#client.scope
+                 ,expiry_time  = ExpiryTime
                  },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
@@ -327,19 +305,9 @@ get_token_type(Type) ->
 get_str_token_type("bearer") -> bearer;
 get_str_token_type(_Else) -> unsupported.
 
-do_request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
-  {Headers2, Client} = add_auth_header(Headers, Client0, Options),
-  {restc:request(Method, Type, Url, Expect, Headers2, Body, Options), Client}.
-
-add_auth_header(Headers0,
-                #client{access_token = undefined} = Client0,
-                Options) ->
-  {ok, _RetrHeaders, Client} = do_retrieve_access_token(Client0, Options),
-  Headers                    = add_auth_header(Headers0, Client),
-  {Headers, Client};
-add_auth_header(Headers0, Client, _) ->
+do_request(Method, Type, Url, Expect, Headers0, Body, Options, Client) ->
   Headers = add_auth_header(Headers0, Client),
-  {Headers, Client}.
+  {restc:request(Method, Type, Url, Expect, Headers, Body, Options), Client}.
 
 add_auth_header(Headers, #client{grant_type = <<"azure_client_credentials">>,
                                  access_token = AccessToken}) ->
@@ -352,6 +320,50 @@ add_auth_header(Headers, #client{token_type = bearer,
 add_auth_header(Headers, #client{access_token = AccessToken}) ->
   AH = {<<"Authorization">>, <<"token ", AccessToken/binary>>},
   [AH | proplists:delete(<<"Authorization">>, Headers)].
+
+retrieve_access_token_fun(Client0, Options) ->
+  fun() ->
+      case do_retrieve_access_token(Client0, Options) of
+        {ok, _Headers, Client} -> {ok, Client, Client#client.expiry_time};
+        {error, Reason} -> {error, Reason}
+      end
+  end.
+
+get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
+  case {proplists:get_value(cache_token, Options, false),
+        proplists:get_value(force_revalidate, Options, false)}
+  of
+    {false, _} ->
+      {ok, _Headers, Client} = do_retrieve_access_token(Client0, Options),
+      {ok, Client};
+    {true, false} ->
+      Key = hash_client(Client0),
+      case oauth2c_token_cache:get(Key) of
+        {error, not_found} ->
+          RevalidateFun = retrieve_access_token_fun(Client0, Options),
+          oauth2c_token_cache:set_and_get(Key, RevalidateFun);
+        {ok, Client} ->
+          {ok, Client}
+      end;
+    {true, true} ->
+      Key = hash_client(Client0),
+      RevalidateFun = retrieve_access_token_fun(Client0, Options),
+      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiryTime)
+  end.
+
+hash_client(#client{grant_type = Type,
+                    auth_url = AuthUrl,
+                    id = ID,
+                    secret = Secret,
+                    scope = Scope}) ->
+  erlang:phash2({Type, AuthUrl, ID, Secret, Scope}).
+
+%%%_ * Tests -------------------------------------------------------
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+-endif.
 
 %%%_* Emacs ============================================================
 %%% Local Variables:
