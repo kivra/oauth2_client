@@ -98,7 +98,7 @@ handle_call({set_and_get, Key, LazyValue,
     {error, not_found} ->
       case LazyValue() of
         {ok, Result, ExpiryTime0} ->
-          ExpiryTime = get_expiry_time(ExpiryTime0, DefaultTTL),
+          ExpiryTime = get_expires_in(ExpiryTime0, DefaultTTL),
           ets:insert(?TOKEN_CACHE_ID, {Key, Result, ExpiryTime}),
           {reply, {ok, Result}, State};
         {error, Reason} -> {reply, {error, Reason}, State}
@@ -128,9 +128,9 @@ get_token(Key, ExpiryTimeLowerLimit) ->
       {error, not_found}
   end.
 
-get_expiry_time(undefined, DefaultTTL) ->
+get_expires_in(undefined, DefaultTTL) ->
   erlang:system_time(second) + DefaultTTL;
-get_expiry_time(ExpiryTime, _DefaultTTL) ->
+get_expires_in(ExpiryTime, _DefaultTTL) ->
   ExpiryTime.
 
 %%%_ * Tests -------------------------------------------------------
@@ -138,10 +138,10 @@ get_expiry_time(ExpiryTime, _DefaultTTL) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
-get_expiry_time_test_() ->
+get_expires_in_test_() ->
   [fun() ->
        {T, Default} = Input,
-       Actual = get_expiry_time(T, Default),
+       Actual = get_expires_in(T, Default),
        ?assertEqual(Expected, Actual)
    end
    || {Input, Expected} <- [{{1, 100}, 1}]

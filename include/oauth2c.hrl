@@ -1,14 +1,13 @@
--record(client, {
-        grant_type    = undefined :: binary()     | undefined,
-        auth_url      = undefined :: binary()     | undefined,
-        access_token  = undefined :: binary()     | undefined,
-        token_type    = undefined :: token_type() | undefined,
-        refresh_token = undefined :: binary()     | undefined,
-        id            = undefined :: binary()     | undefined,
-        secret        = undefined :: binary()     | undefined,
-        scope         = undefined :: binary()     | undefined,
-        expiry_time   = undefined :: integer()     | undefined
-}).
+-record(client, {grant_type    = undefined :: binary()     | undefined,
+                 auth_url      = undefined :: binary()     | undefined,
+                 access_token  = undefined :: binary()     | undefined,
+                 token_type    = undefined :: token_type() | undefined,
+                 refresh_token = undefined :: binary()     | undefined,
+                 id            = undefined :: binary()     | undefined,
+                 secret        = undefined :: binary()     | undefined,
+                 scope         = undefined :: binary()     | undefined,
+                 expires_in    = undefined :: integer()    | undefined
+                }).
 
 -type method()         :: head    |
                           get     |

@@ -146,11 +146,11 @@ retrieve_cached_token_on_401(_Config) ->
   ?assertMatch({{ok, 200, _, _}, _}, Response1),
   {_, Client1} = Response1,
   {_, Client2} = Response2,
-  ?assert(Client1#client.expiry_time < Client2#client.expiry_time).
+  ?assert(Client1#client.expires_in < Client2#client.expires_in).
 
 retrieve_cached_token_on_401_burst(_Config) ->
   Client = client(?AUTH_URL),
-  % First call to request will return a access token with expiry_time X,
+  % First call to request will return a access token with expires_in X,
   % and this token will be cached.
   {{ok, 200, _, _}, Client1} = oauth2c:request(get, json,
           ?REQUEST_URL, [], [], [], [cache_token], Client),
@@ -181,7 +181,7 @@ retrieve_cached_token_on_401_burst(_Config) ->
   % processes,
   {{ok, 401, _, _}, Client2} = oauth2c:request(get, json,
     ?REQUEST_URL, [], [], [], [cache_token], Client1),
-  ?assert(Client1#client.expiry_time < Client2#client.expiry_time).
+  ?assert(Client1#client.expires_in < Client2#client.expires_in).
 
 fetch_access_token_and_do_request(_Config) ->
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
@@ -223,7 +223,7 @@ mock_http_requests() ->
   meck:expect(restc, request,
               fun(post, percent, ?AUTH_URL, [200], _, _, _) ->
                   Body = [{<<"access_token">>, ?VALID_TOKEN},
-                          {<<"expiry_time">>, erlang:system_time(second) + 1},
+                          {<<"expires_in">>, erlang:system_time(second) + 1},
                           {<<"token_type">>, <<"bearer">>}],
                   {ok, 200, [], Body};
                  (post, percent, ?INVALID_TOKEN_AUTH_URL, [200], _, _, _) ->
@@ -246,10 +246,10 @@ mock_http_request_401() ->
       {[post, percent, ?AUTH_URL, [200], '_', '_', '_'],
         meck:seq([
           {ok, 200, [], [{<<"access_token">>, <<"token1">>},
-                          {<<"expiry_time">>, erlang:system_time(second) + 1},
+                          {<<"expires_in">>, erlang:system_time(second) + 1},
                           {<<"token_type">>, <<"bearer">>}]},
           {ok, 200, [], [{<<"access_token">>, <<"token2">>},
-                          {<<"expiry_time">>, erlang:system_time(second) + 10},
+                          {<<"expires_in">>, erlang:system_time(second) + 10},
                           {<<"token_type">>, <<"bearer">>}]}
         ])
       },
@@ -258,7 +258,7 @@ mock_http_request_401() ->
           {ok, 200, [], [{<<"access_token">>, <<"invalid">>},
                         {<<"token_type">>, <<"bearer">>}]},
           {ok, 401, [], [{<<"access_token">>, ?VALID_TOKEN},
-                        {<<"expiry_time">>, erlang:system_time(second) + 1},
+                        {<<"expires_in">>, erlang:system_time(second) + 1},
                         {<<"token_type">>, <<"bearer">>}]}
         ])
       }
@@ -272,10 +272,10 @@ mock_http_request_401_burst() ->
       {[post, percent, ?AUTH_URL, [200], '_', '_', '_'],
         meck:seq([
           {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
-                          {<<"expiry_time">>, Now + 10},
+                          {<<"expires_in">>, Now + 10},
                           {<<"token_type">>, <<"bearer">>}]},
           {ok, 200, [], [{<<"access_token">>, ?VALID_TOKEN},
-                          {<<"expiry_time">>, Now + 20},
+                          {<<"expires_in">>, Now + 20},
                           {<<"token_type">>, <<"bearer">>}]}
         ])
       },

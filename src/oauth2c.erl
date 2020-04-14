@@ -202,7 +202,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       RefreshToken = proplists:get_value(<<"refresh_token">>, Body),
-      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
+      ExpiresIn = proplists:get_value(<<"expires_in">>, Body),
       Result = case RefreshToken of
                  undefined ->
                    #client{
@@ -212,7 +212,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
                      ,id           = Client#client.id
                      ,secret       = Client#client.secret
                      ,scope        = Client#client.scope
-                     ,expiry_time  = ExpiryTime
+                     ,expires_in  = ExpiresIn
                      };
                  _ ->
                    #client{
@@ -221,7 +221,7 @@ do_retrieve_access_token(#client{grant_type = <<"password">>} = Client, Opts) ->
                      ,access_token  = AccessToken
                      ,refresh_token = RefreshToken
                      ,scope         = Client#client.scope
-                     ,expiry_time  = ExpiryTime
+                     ,expires_in  = ExpiresIn
                      }
                end,
       {ok, Headers, Result};
@@ -246,7 +246,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
-      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
+      ExpiresIn = proplists:get_value(<<"expires_in">>, Body),
       Result = #client{
                   grant_type    = Client#client.grant_type
                  ,auth_url     = Client#client.auth_url
@@ -255,7 +255,7 @@ do_retrieve_access_token(#client{grant_type = <<"client_credentials">>,
                  ,id           = Client#client.id
                  ,secret       = Client#client.secret
                  ,scope        = Client#client.scope
-                 ,expiry_time  = ExpiryTime
+                 ,expires_in  = ExpiresIn
                  },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
@@ -279,17 +279,16 @@ do_retrieve_access_token(#client{grant_type = <<"azure_client_credentials">>,
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
-      ExpiryTime = proplists:get_value(<<"expiry_time">>, Body),
-      Result = #client{
-                  grant_type    = Client#client.grant_type
-                 ,auth_url     = Client#client.auth_url
-                 ,access_token = AccessToken
-                 ,token_type   = get_token_type(TokenType)
-                 ,id           = Client#client.id
-                 ,secret       = Client#client.secret
-                 ,scope        = Client#client.scope
-                 ,expiry_time  = ExpiryTime
-                 },
+      ExpiresIn = proplists:get_value(<<"expires_in">>, Body),
+      Result = #client{ grant_type   = Client#client.grant_type
+                      , auth_url     = Client#client.auth_url
+                      , access_token = AccessToken
+                      , token_type   = get_token_type(TokenType)
+                      , id           = Client#client.id
+                      , secret       = Client#client.secret
+                      , scope        = Client#client.scope
+                      , expires_in   = ExpiresIn
+                      },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
       {error, Reason};
@@ -324,12 +323,12 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
 retrieve_access_token_fun(Client0, Options) ->
   fun() ->
       case do_retrieve_access_token(Client0, Options) of
-        {ok, _Headers, Client} -> {ok, Client, Client#client.expiry_time};
+        {ok, _Headers, Client} -> {ok, Client, Client#client.expires_in};
         {error, Reason} -> {error, Reason}
       end
   end.
 
-get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
+get_access_token(#client{expires_in = ExpiresIn} = Client0, Options) ->
   case {proplists:get_value(cache_token, Options, false),
         proplists:get_value(force_revalidate, Options, false)}
   of
@@ -348,7 +347,7 @@ get_access_token(#client{expiry_time = ExpiryTime} = Client0, Options) ->
     {true, true} ->
       Key = hash_client(Client0),
       RevalidateFun = retrieve_access_token_fun(Client0, Options),
-      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiryTime)
+      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiresIn)
   end.
 
 hash_client(#client{grant_type = Type,
