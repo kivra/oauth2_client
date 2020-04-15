@@ -18,7 +18,9 @@
 
 groups() -> [].
 
-all() -> [ retrieve_access_token
+all() -> [ client_credentials_in_body
+         , client_credentials_in_header
+         , retrieve_access_token
          , fetch_access_token_on_request
          , fetch_access_token_on_request
          , fetch_new_token_on_401
@@ -51,6 +53,34 @@ end_per_testcase(_TestCase, Config) ->
   meck:unload([restc]),
   oauth2c_token_cache:clear(),
   Config.
+
+client_credentials_in_body(_Config) ->
+  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                               ?AUTH_URL,
+                               <<"ID">>,
+                               <<"SECRET">>,
+                               undefined,
+                               [credentials_in_body]),
+  ?assert(meck:called(restc, request, [post,
+                                       percent,
+                                       ?AUTH_URL,
+                                       '_',
+                                       [], %% empty headers
+                                       ['_', '_', '_'], %% grant_type + creds
+                                       '_'])).
+
+client_credentials_in_header(_Config) ->
+  oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
+                                ?AUTH_URL,
+                                <<"ID">>,
+                                <<"SECRET">>),
+  ?assert(meck:called(restc, request, [post,
+                                       percent,
+                                       ?AUTH_URL,
+                                       '_',
+                                       ['_'], %% credentials
+                                       ['_'], %% grant_type
+                                       '_'])).
 
 retrieve_access_token(_Config) ->
   Response = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
