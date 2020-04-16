@@ -193,7 +193,11 @@ do_retrieve_access_token(Client, Opts) ->
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
       TokenType = proplists:get_value(<<"token_type">>, Body, ""),
-      ExpiresIn = proplists:get_value(<<"expires_in">>, Body),
+      ExpireTime =
+        case proplists:get_value(<<"expires_in">>, Body) of
+          undefined -> undefined;
+          ExpiresIn -> erlang:system_time(second) + ExpiresIn
+        end,
       RefreshToken = proplists:get_value(<<"refresh_token">>,
                                          Body,
                                          Client#client.refresh_token),
@@ -205,7 +209,7 @@ do_retrieve_access_token(Client, Opts) ->
                       , id            = Client#client.id
                       , secret        = Client#client.secret
                       , scope         = Client#client.scope
-                      , expires_in    = ExpiresIn
+                      , expire_time   = ExpireTime
                       },
       {ok, Headers, Result};
     {error, _, _, Reason} ->
@@ -290,12 +294,12 @@ add_auth_header(Headers, #client{access_token = AccessToken}) ->
 retrieve_access_token_fun(Client0, Options) ->
   fun() ->
       case do_retrieve_access_token(Client0, Options) of
-        {ok, _Headers, Client} -> {ok, Client, Client#client.expires_in};
+        {ok, _Headers, Client} -> {ok, Client, Client#client.expire_time};
         {error, Reason} -> {error, Reason}
       end
   end.
 
-get_access_token(#client{expires_in = ExpiresIn} = Client0, Options) ->
+get_access_token(#client{expire_time = ExpireTime} = Client0, Options) ->
   case {proplists:get_value(cache_token, Options, false),
         proplists:get_value(force_revalidate, Options, false)}
   of
@@ -314,7 +318,7 @@ get_access_token(#client{expires_in = ExpiresIn} = Client0, Options) ->
     {true, true} ->
       Key = hash_client(Client0),
       RevalidateFun = retrieve_access_token_fun(Client0, Options),
-      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpiresIn)
+      oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpireTime)
   end.
 
 hash_client(#client{grant_type = Type,

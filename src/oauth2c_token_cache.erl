@@ -97,8 +97,8 @@ handle_call({set_and_get, Key, LazyValue,
       {reply, {ok, Result}, State};
     {error, not_found} ->
       case LazyValue() of
-        {ok, Result, ExpiryTime0} ->
-          ExpiryTime = get_expires_in(ExpiryTime0, DefaultTTL),
+        {ok, Result, ExpireTime} ->
+          ExpiryTime = get_expire_time(ExpireTime, DefaultTTL),
           ets:insert(?TOKEN_CACHE_ID, {Key, Result, ExpiryTime}),
           {reply, {ok, Result}, State};
         {error, Reason} -> {reply, {error, Reason}, State}
@@ -113,8 +113,7 @@ get_token(Key) ->
   get_token(Key, undefined).
 get_token(Key, ExpiryTimeLowerLimit) ->
   Now = erlang:system_time(second),
-  case ets:lookup(?TOKEN_CACHE_ID, Key)
-  of
+  case ets:lookup(?TOKEN_CACHE_ID, Key) of
     % Only return cache entry if
     % (1) It has not expired
     % (2) Its expiry time is greater than ExpiryTimeLowerLimit
@@ -128,10 +127,10 @@ get_token(Key, ExpiryTimeLowerLimit) ->
       {error, not_found}
   end.
 
-get_expires_in(undefined, DefaultTTL) ->
+get_expire_time(undefined, DefaultTTL) ->
   erlang:system_time(second) + DefaultTTL;
-get_expires_in(ExpiryTime, _DefaultTTL) ->
-  ExpiryTime.
+get_expire_time(ExpireTime, _DefaultTTL) ->
+  ExpireTime.
 
 %%%_ * Tests -------------------------------------------------------
 
@@ -141,7 +140,7 @@ get_expires_in(ExpiryTime, _DefaultTTL) ->
 get_expires_in_test_() ->
   [fun() ->
        {T, Default} = Input,
-       Actual = get_expires_in(T, Default),
+       Actual = get_expire_time(T, Default),
        ?assertEqual(Expected, Actual)
    end
    || {Input, Expected} <- [{{1, 100}, 1}]
