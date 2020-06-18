@@ -46,10 +46,11 @@
 
 -include("oauth2c.hrl").
 
--record(service_account, { private_key, project_id, iss, aud }).
-
 %%% API ========================================================================
 
+-spec service_account(FilePath, Scope) -> client() | {error, '_'} when
+    FilePath :: file:filename(),
+    Scope    :: binary().
 service_account(FilePath, Scope) ->
   case file:read_file(FilePath) of
     {ok, Data} ->
@@ -73,7 +74,7 @@ service_account_map(Map, Scope) ->
   #client{ grant_type = <<"service_account">>
     , id = ClientEmail
     , auth_url = TokenUri
-    , secret = SA
+    , service = SA
     , scope = Scope }.
 
 -spec client(Type, URL, ID, Secret) -> client() when
@@ -255,7 +256,7 @@ prepare_token_request(Client, Opts) ->
 %% https://developers.google.com/identity/protocols/oauth2/service-account#jwt-auth
 base_request(#client{grant_type = <<"service_account">>}=C) ->
   GrantType = <<"urn:ietf:params:oauth:grant-type:jwt-bearer">>,
-  JWT = service_account_jwt(C),
+  {_, JWT} = service_account_jwt(C),
   #{ headers => []
    , body    => [ {<<"grant_type">>, GrantType}
                 , {<<"assertion">>, JWT}
@@ -266,7 +267,7 @@ base_request(#client{grant_type = <<"azure_client_credentials">>}) ->
 base_request(#client{grant_type = GrantType}) ->
   #{headers => [], body => [{<<"grant_type">>, GrantType}]}.
 
-service_account_jwt(#client{secret = SA}=C) when is_record(SA, service_account) ->
+service_account_jwt(#client{service = SA}=C) when is_record(SA, service_account) ->
   JWT = begin
           IAT = epoch(),
           EXP = IAT + 1800,
@@ -279,8 +280,7 @@ service_account_jwt(#client{secret = SA}=C) when is_record(SA, service_account) 
         end,
   JWK = jose_jwk:from_pem(SA#service_account.private_key),
   JWS = jose_jws:from(#{<<"alg">> => <<"RS256">>, <<"typ">> => <<"JWT">> }),
-  {_, Token} = jose_jws:compact(jose_jwt:sign(JWK, JWS, JWT)),
-  Token.
+  jose_jws:compact(jose_jwt:sign(JWK, JWS, JWT)).
 
 epoch() ->
   {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
