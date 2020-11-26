@@ -29,7 +29,7 @@
 -type property()       :: atom() | tuple().
 -type proplist()       :: [property()].
 -type options()        :: proplist().
--type body()           :: proplist().
+-type body()           :: proplist() | [proplist()].
 -type restc_response() :: { ok
                           , Status::status_code()
                           , Headers::headers()
