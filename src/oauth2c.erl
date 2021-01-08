@@ -26,7 +26,8 @@
 
 -module(oauth2c).
 
--export([service_account/2]).
+-export([from_service_account_file/2]).
+-export([service_account_project_id/1]).
 -export([client/4]).
 -export([client/5]).
 
@@ -48,16 +49,19 @@
 
 %%% API ========================================================================
 
--spec service_account(FilePath, Scope) -> client() | {error, '_'} when
+-spec from_service_account_file(FilePath, Scope) -> client() | {error, '_'} when
     FilePath :: file:filename(),
     Scope    :: binary().
-service_account(FilePath, Scope) ->
+from_service_account_file(FilePath, Scope) ->
   case file:read_file(FilePath) of
     {ok, Data} ->
       service_account_map(jsx:decode(Data, [return_maps, {labels, attempt_atom}]), Scope);
     {error, _} = E ->
       E
   end.
+
+service_account_project_id(#client{grant_type = <<"service_account">>, service = SA}) ->
+  SA#service_account.project_id.
 
 service_account_map(Map, Scope) ->
   #{ private_key := PemPrivKey
