@@ -8,7 +8,7 @@
   1},
  {<<"idna">>,{pkg,<<"idna">>,<<"6.1.1">>},2},
  {<<"jose">>,
-  {git,"git@github.com:potatosalad/erlang-jose.git",
+  {git,"git://github.com/potatosalad/erlang-jose.git",
        {ref,"5ad99d03c5381ec68a9576c81ed4e9312fea73e0"}},
   0},
  {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},1},
@@ -30,7 +30,7 @@
  {<<"jsx">>, <<"8EE1DB1CABAFDD578A2776A6AAAE87C2A8CE54B47B59E9EC7DAB5D7EB71CD8DC">>},
  {<<"metrics">>, <<"69B09ADDDC4F74A40716AE54D140F93BEB0FB8978D8636EADED0C31B6F099F16">>},
  {<<"mimerl">>, <<"F278585650AA581986264638EBF698F8BB19DF297F66AD91B18910DFC6E19323">>},
- {<<"parse_trans">>, <<"17EF63ABDE837AD30680EA7F857DD9E7CED9476CDD7B0394432AF4BFC241B960">>},
+ {<<"parse_trans">>, <<"07CD9577885F56362D414E8C4C4E6BDF10D43A8767ABB92D24CBE8B24C54888B">>},
  {<<"ssl_verify_fun">>, <<"13104D7897E38ED7F044C4DE953A6C28597D1C952075EB2E328BC6D6F2BFC496">>},
  {<<"unicode_util_compat">>, <<"1D1848C40487CDB0B30E8ED975E34E025860C02E419CB615D255849F3427439D">>}]}
 ].
