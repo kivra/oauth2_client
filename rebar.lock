@@ -9,7 +9,7 @@
  {<<"idna">>,{pkg,<<"idna">>,<<"6.1.1">>},2},
  {<<"jose">>,
   {git,"git://github.com/potatosalad/erlang-jose.git",
-       {ref,"5ad99d03c5381ec68a9576c81ed4e9312fea73e0"}},
+       {ref,"090a2ed054304ecc012d6c2d9d10d2a294d835b1"}},
   0},
  {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},1},
  {<<"metrics">>,{pkg,<<"metrics">>,<<"1.0.1">>},2},
