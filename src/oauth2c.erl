@@ -243,6 +243,7 @@ do_retrieve_access_token(Client, Opts) ->
                       , id            = Client#client.id
                       , secret        = Client#client.secret
                       , scope         = Client#client.scope
+                      , service       = Client#client.service
                       , expire_time   = ExpireTime
                       },
       {ok, Headers, Result};
