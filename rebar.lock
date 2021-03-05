@@ -1,20 +1,26 @@
-{"1.1.0",
-[{<<"certifi">>,{pkg,<<"certifi">>,<<"2.5.3">>},2},
+{"1.2.0",
+[{<<"base64url">>,{pkg,<<"base64url">>,<<"0.0.1">>},1},
+ {<<"certifi">>,{pkg,<<"certifi">>,<<"2.5.3">>},2},
  {<<"erlsom">>,{pkg,<<"erlsom">>,<<"1.5.0">>},1},
  {<<"hackney">>,{pkg,<<"hackney">>,<<"1.17.0">>},1},
  {<<"idna">>,{pkg,<<"idna">>,<<"6.1.1">>},2},
+ {<<"jose">>,
+  {git,"https://github.com/potatosalad/erlang-jose.git",
+       {ref,"090a2ed054304ecc012d6c2d9d10d2a294d835b1"}},
+  0},
  {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},1},
  {<<"metrics">>,{pkg,<<"metrics">>,<<"1.0.1">>},2},
  {<<"mimerl">>,{pkg,<<"mimerl">>,<<"1.2.0">>},2},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"3.3.1">>},2},
  {<<"restc">>,
-  {git,"git://github.com/kivra/restclient.git",
+  {git,"https://github.com/kivra/restclient.git",
        {ref,"993fdb6005da69252ec98573b2c4ea5a905011ff"}},
   0},
  {<<"ssl_verify_fun">>,{pkg,<<"ssl_verify_fun">>,<<"1.1.6">>},2},
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.7.0">>},2}]}.
 [
 {pkg_hash,[
+ {<<"base64url">>, <<"36A90125F5948E3AFD7BE97662A1504B934DD5DAC78451CA6E9ABF85A10286BE">>},
  {<<"certifi">>, <<"70BDD7E7188C804F3A30EE0E7C99655BC35D8AC41C23E12325F36AB449B70651">>},
  {<<"erlsom">>, <<"C5A5CDD0EE0E8DCA62BCC4B13FF08DA24FDEFC16CCD8B25282A2FDA2BA1BE24A">>},
  {<<"hackney">>, <<"717EA195FD2F898D9FE9F1CE0AFCC2621A41ECFE137FAE57E7FE6E9484B9AA99">>},
@@ -24,5 +30,17 @@
  {<<"mimerl">>, <<"67E2D3F571088D5CFD3E550C383094B47159F3EEE8FFA08E64106CDF5E981BE3">>},
  {<<"parse_trans">>, <<"16328AB840CC09919BD10DAB29E431DA3AF9E9E7E7E6F0089DD5A2D2820011D8">>},
  {<<"ssl_verify_fun">>, <<"CF344F5692C82D2CD7554F5EC8FD961548D4FD09E7D22F5B62482E5AEAEBD4B0">>},
- {<<"unicode_util_compat">>, <<"BC84380C9AB48177092F43AC89E4DFA2C6D62B40B8BD132B1059ECC7232F9A78">>}]}
+ {<<"unicode_util_compat">>, <<"BC84380C9AB48177092F43AC89E4DFA2C6D62B40B8BD132B1059ECC7232F9A78">>}]},
+{pkg_hash_ext,[
+ {<<"base64url">>, <<"FAB09B20E3F5DB886725544CBCF875B8E73EC93363954EB8A1A9ED834AA8C1F9">>},
+ {<<"certifi">>, <<"ED516ACB3929B101208A9D700062D520F3953DA3B6B918D866106FFA980E1C10">>},
+ {<<"erlsom">>, <<"55A9DBF9CFA77FCFC108BD8E2C4F9F784DEA228A8F4B06EA10B684944946955A">>},
+ {<<"hackney">>, <<"64C22225F1EA8855F584720C0E5B3CD14095703AF1C9FBC845BA042811DC671C">>},
+ {<<"idna">>, <<"92376EB7894412ED19AC475E4A86F7B413C1B9FBB5BD16DCCD57934157944CEA">>},
+ {<<"jsx">>, <<"8EE1DB1CABAFDD578A2776A6AAAE87C2A8CE54B47B59E9EC7DAB5D7EB71CD8DC">>},
+ {<<"metrics">>, <<"69B09ADDDC4F74A40716AE54D140F93BEB0FB8978D8636EADED0C31B6F099F16">>},
+ {<<"mimerl">>, <<"F278585650AA581986264638EBF698F8BB19DF297F66AD91B18910DFC6E19323">>},
+ {<<"parse_trans">>, <<"07CD9577885F56362D414E8C4C4E6BDF10D43A8767ABB92D24CBE8B24C54888B">>},
+ {<<"ssl_verify_fun">>, <<"BDB0D2471F453C88FF3908E7686F86F9BE327D065CC1EC16FA4540197EA04680">>},
+ {<<"unicode_util_compat">>, <<"25EEE6D67DF61960CF6A794239566599B09E17E668D3700247BC498638152521">>}]}
 ].

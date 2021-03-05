@@ -26,6 +26,8 @@
 
 -module(oauth2c).
 
+-export([from_service_account_file/2]).
+-export([service_account_project_id/1]).
 -export([client/4]).
 -export([client/5]).
 
@@ -46,6 +48,38 @@
 -include("oauth2c.hrl").
 
 %%% API ========================================================================
+
+-spec from_service_account_file(FilePath, Scope) -> client() | {error, '_'} when
+    FilePath :: file:filename(),
+    Scope    :: binary().
+from_service_account_file(FilePath, Scope) ->
+  case file:read_file(FilePath) of
+    {ok, Data} ->
+      service_account_map(jsx:decode(Data, [return_maps, {labels, attempt_atom}]), Scope);
+    {error, _} = E ->
+      E
+  end.
+
+service_account_project_id(#client{grant_type = <<"service_account">>, service = SA}) ->
+  SA#service_account.project_id.
+
+service_account_map(Map, Scope) ->
+  #{ private_key := PemPrivKey
+   , project_id := ProjectId
+   , auth_uri := _AuthUri
+   , token_uri := TokenUri
+   , client_email := ClientEmail
+   } = Map,
+  SA = #service_account{ private_key = PemPrivKey
+                       , project_id = ProjectId
+                       , iss = ClientEmail
+                       , aud = TokenUri
+                       },
+  #client{ grant_type = <<"service_account">>
+    , id = ClientEmail
+    , auth_url = TokenUri
+    , service = SA
+    , scope = Scope }.
 
 -spec client(Type, URL, ID, Secret) -> client() when
     Type   :: at_type(),
@@ -209,6 +243,7 @@ do_retrieve_access_token(Client, Opts) ->
                       , id            = Client#client.id
                       , secret        = Client#client.secret
                       , scope         = Client#client.scope
+                      , service       = Client#client.service
                       , expire_time   = ExpireTime
                       },
       {ok, Headers, Result};
@@ -223,25 +258,54 @@ prepare_token_request(Client, Opts) ->
   Request0 = add_client(BaseRequest, Client, Opts),
   add_fields(Request0, Client).
 
+%% https://developers.google.com/identity/protocols/oauth2/service-account#jwt-auth
+base_request(#client{grant_type = <<"service_account">>}=C) ->
+  GrantType = <<"urn:ietf:params:oauth:grant-type:jwt-bearer">>,
+  {_, JWT} = service_account_jwt(C),
+  #{ headers => []
+   , body    => [ {<<"grant_type">>, GrantType}
+                , {<<"assertion">>, JWT}
+                ]
+   };
 base_request(#client{grant_type = <<"azure_client_credentials">>}) ->
   #{headers => [], body => [{<<"grant_type">>, <<"client_credentials">>}]};
 base_request(#client{grant_type = GrantType}) ->
   #{headers => [], body => [{<<"grant_type">>, GrantType}]}.
 
+service_account_jwt(#client{service = SA}=C) when is_record(SA, service_account) ->
+  JWT = begin
+          IAT = epoch(),
+          EXP = IAT + 1800,
+          jose_jwt:from(#{ iss =>   SA#service_account.iss
+                         , scope => C#client.scope
+                         , aud =>   SA#service_account.aud
+                         , exp =>   EXP
+                         , iat =>   IAT
+                         })
+        end,
+  JWK = jose_jwk:from_pem(SA#service_account.private_key),
+  JWS = jose_jws:from(#{<<"alg">> => <<"RS256">>, <<"typ">> => <<"JWT">> }),
+  jose_jws:compact(jose_jwt:sign(JWK, JWS, JWT)).
+
+epoch() ->
+  {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
+  MegaSecs * 1000000 + Secs.
+
 add_client(Request0, Client, Opts) ->
   #client{id = Id, secret = Secret} = Client,
   case
-    {Client#client.grant_type =:= <<"password">>,
+    {Client#client.grant_type =:= <<"service_account">>,
+     Client#client.grant_type =:= <<"password">>,
      Client#client.grant_type =:= <<"azure_client_credentials">> orelse
      proplists:get_value(credentials_in_body, Opts, false)}
   of
-    {false, false} ->
+    {false, false, false} ->
       #{headers := Headers0} = Request0,
       Auth = base64:encode(<<Id/binary, ":", Secret/binary>>),
       Headers = [{<<"Authorization">>, <<"Basic ", Auth/binary>>}
                  | Headers0],
       Request0#{headers => Headers};
-    {false, true} ->
+    {false, false, true} ->
       #{body := Body} = Request0,
       Request0#{body => [{<<"client_id">>, Id},
                          {<<"client_secret">>, Secret}
@@ -251,12 +315,16 @@ add_client(Request0, Client, Opts) ->
     %% client authentication in the password grant. Right now we
     %% are assuming that if the grant is password then the client is public
     %% which is not a fair assumption.
-    {true, _} ->
+    {false, true, _} ->
       #{body := Body} = Request0,
       Request0#{body => [{<<"username">>, Id},
-                         {<<"password">>, Secret} | Body]}
+                         {<<"password">>, Secret} | Body]};
+    {true, _, _} ->
+      Request0
   end.
 
+add_fields(Request, #client{grant_type = <<"service_account">>}) ->
+  Request;
 add_fields(Request, #client{scope=undefined}) ->
   Request;
 add_fields(Request, #client{grant_type = <<"azure_client_credentials">>,
@@ -282,6 +350,11 @@ do_request(Method, Type, Url, Expect, Headers0, Body, Options, Client) ->
 add_auth_header(Headers, #client{grant_type = <<"azure_client_credentials">>,
                                  access_token = AccessToken}) ->
   AH = {<<"Authorization">>, <<"bearer ", AccessToken/binary>>},
+  [AH | proplists:delete(<<"Authorization">>, Headers)];
+add_auth_header(Headers, #client{grant_type = <<"service_account">>,
+                                 token_type = bearer,
+                                 access_token = AccessToken}) ->
+  AH = {<<"Authorization">>, <<"Bearer ", AccessToken/binary>>},
   [AH | proplists:delete(<<"Authorization">>, Headers)];
 add_auth_header(Headers, #client{token_type = bearer,
                                  access_token = AccessToken}) ->

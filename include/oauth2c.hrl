@@ -1,3 +1,10 @@
+-record(service_account,
+    { private_key :: binary()
+    , project_id  :: binary()
+    , iss         :: binary()
+    , aud         :: binary()
+    }).
+
 -record(client, {grant_type    = undefined :: binary()     | undefined,
                  auth_url      = undefined :: binary()     | undefined,
                  access_token  = undefined :: binary()     | undefined,
@@ -5,6 +12,7 @@
                  refresh_token = undefined :: binary()     | undefined,
                  id            = undefined :: binary()     | undefined,
                  secret        = undefined :: binary()     | undefined,
+                 service       = undefined :: #service_account{} | undefined,
                  scope         = undefined :: binary()     | undefined,
                  expire_time   = undefined :: integer()    | undefined
                 }).
