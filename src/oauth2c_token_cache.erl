@@ -8,6 +8,8 @@
 -module(oauth2c_token_cache).
 -behaviour(gen_server).
 
+-elvis([{elvis_style, state_record_and_type, disable}]).
+
 %%%_* Exports ==========================================================
 
 -export([start/0]).
