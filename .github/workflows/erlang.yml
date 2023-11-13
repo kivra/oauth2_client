@@ -11,13 +11,13 @@ jobs:
     name: OTP ${{matrix.otp}}
     strategy:
       matrix:
-        otp: ["23.2", "24.0"]
+        otp: ["24", "25"]
     steps:
-    - uses: actions/checkout@v2.0.0
-    - uses: gleam-lang/setup-erlang@v1.1.2
+    - uses: actions/checkout@v4
+    - uses: erlef/setup-beam@v1.16.0
       with:
         otp-version: ${{matrix.otp}}
-    - uses: actions/checkout@v1
+        rebar3-version: "3.20.0"
     - name: Compile
       run: make
     - name: Run elvis
@@ -48,4 +48,3 @@ jobs:
         tag_name: ${{ steps.tag_version.outputs.new_tag }}
         release_name: Release ${{ steps.tag_version.outputs.new_tag }}
         body: ${{ steps.tag_version.outputs.changelog }}
-
