@@ -18,7 +18,7 @@ jobs:
     - uses: erlef/setup-beam@v1.16.0
       with:
         otp-version: ${{matrix.otp}}
-        install-rebar: true
+        rebar3-version: "3.24.0"
     - name: Compile
       run: make
     - name: Run elvis
