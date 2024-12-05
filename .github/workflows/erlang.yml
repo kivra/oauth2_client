@@ -10,8 +10,9 @@ jobs:
 
     name: OTP ${{matrix.otp}}
     strategy:
+      fail-fast: false
       matrix:
-        otp: ["24", "25"]
+        otp: ["24", "25", "26", "27"]
     steps:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1.16.0
