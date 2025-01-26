@@ -221,21 +221,22 @@ ensure_client_has_access_token(Client0, Options) ->
 do_retrieve_access_token(Client, Opts0) ->
   Opts = Opts0 -- [return_maps], %% Make sure we get a proplist
   #{headers := RequestHeaders,
-    body := RequestBody} = prepare_token_request(Client, Opts),
+    body := RequestBody} = prepare_token_request(Client, [return_maps | Opts]),
   case restc:request(post, percent, Client#client.auth_url,
                      [200], RequestHeaders, RequestBody, Opts)
   of
-    {ok, _, Headers, Body} ->
-      AccessToken = proplists:get_value(<<"access_token">>, Body),
-      TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+    {ok, _, Headers, #{<<"access_token">> := AccessToken} = Body} ->
+      TokenType = maps:get(<<"token_type">>, Body, ""),
       ExpireTime =
-        case proplists:get_value(<<"expires_in">>, Body) of
-          undefined -> undefined;
-          ExpiresIn -> erlang:system_time(second) + ExpiresIn
+        case Body of
+          #{<<"expires_in">> := ExpiresIn} ->
+            erlang:system_time(second) + ExpiresIn;
+          _ ->
+            undefined
         end,
-      RefreshToken = proplists:get_value(<<"refresh_token">>,
-                                         Body,
-                                         Client#client.refresh_token),
+      RefreshToken = maps:get(
+        <<"refresh_token">>, Body, Client#client.refresh_token
+      ),
       Result = #client{ grant_type    = Client#client.grant_type
                       , auth_url      = Client#client.auth_url
                       , access_token  = AccessToken
