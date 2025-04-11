@@ -226,15 +226,19 @@ do_retrieve_access_token(Client, Opts0) ->
                      [200], RequestHeaders, RequestBody, Opts)
   of
     {ok, _, Headers, Body} ->
-      AccessToken = proplists:get_value(<<"access_token">>, Body),
-      TokenType = proplists:get_value(<<"token_type">>, Body, ""),
+      BodyPList = case is_map(Body) of
+        true -> proplists:from_map(Body);
+        _ -> Body
+      end,
+      AccessToken = proplists:get_value(<<"access_token">>, BodyPList),
+      TokenType = proplists:get_value(<<"token_type">>, BodyPList, ""),
       ExpireTime =
-        case proplists:get_value(<<"expires_in">>, Body) of
+        case proplists:get_value(<<"expires_in">>, BodyPList) of
           undefined -> undefined;
           ExpiresIn -> erlang:system_time(second) + ExpiresIn
         end,
       RefreshToken = proplists:get_value(<<"refresh_token">>,
-                                         Body,
+                                         BodyPList,
                                          Client#client.refresh_token),
       Result = #client{ grant_type    = Client#client.grant_type
                       , auth_url      = Client#client.auth_url
