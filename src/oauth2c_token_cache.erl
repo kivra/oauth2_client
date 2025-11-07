@@ -32,6 +32,10 @@
 -define(SERVER, ?MODULE).
 -define(TOKEN_CACHE_ID, token_cache_id).
 
+%%%_* Includes =========================================================
+
+-include_lib("opentelemetry_api/include/otel_tracer.hrl").
+
 %%%_* Code =============================================================
 %%%_ * Types -----------------------------------------------------------
 %%%_ * API -------------------------------------------------------------
@@ -71,10 +75,12 @@ set_and_get(Key, LazyValue) ->
     Value :: {ok,  term()},
     Error :: {error, atom()}.
 set_and_get(Key, LazyValue, CurrenTokenExpiryTime) ->
+  SpanCtx = ?current_span_ctx,
   gen_server:call(?SERVER, {set_and_get,
                             Key,
                             LazyValue,
-                            CurrenTokenExpiryTime}).
+                            CurrenTokenExpiryTime,
+                            SpanCtx}).
 
 -spec clear() -> true.
 clear() ->
@@ -88,8 +94,9 @@ init(State) ->
   {ok, State}.
 
 handle_call({set_and_get, Key, LazyValue,
-            CurrenTokenExpiryTime}, _From,
+            CurrenTokenExpiryTime, SpanCtx}, _From,
             State = #{default_ttl := DefaultTTL}) ->
+  ?set_current_span(SpanCtx),
   % CurrenTokenExpiryTime is used to solve a race-condition
   % that occurs when multiple processes are trying to
   % replace an old token (i.e. the new token has a larger
