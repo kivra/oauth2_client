@@ -6,16 +6,16 @@ jobs:
 
   build_and_test:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     name: OTP ${{matrix.otp}}
     strategy:
       fail-fast: false
       matrix:
-        otp: ["25", "26", "27"]
+        otp: ["26", "27"]
     steps:
-    - uses: actions/checkout@v4
-    - uses: erlef/setup-beam@v1.16.0
+    - uses: actions/checkout@v5
+    - uses: erlef/setup-beam@v1
       with:
         otp-version: ${{matrix.otp}}
         rebar3-version: "3.24.0"
