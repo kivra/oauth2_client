@@ -36,7 +36,8 @@
                   inets,
                   jsx,
                   jose,
-                  restc
+                  restc,
+                  opentelemetry_api
                  ]},
   {env, []},
   {modules, []},

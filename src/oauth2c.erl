@@ -46,6 +46,7 @@
 -define(TOKEN_CACHE_SERVER, oauth2c_token_cache).
 
 -include("oauth2c.hrl").
+-include_lib("opentelemetry_api/include/otel_tracer.hrl").
 
 %%% API ========================================================================
 
@@ -199,7 +200,11 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 
 request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
   Client1 = ensure_client_has_access_token(Client0, Options),
-  case do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) of
+  case
+    ?with_span(
+      <<"oauth2c request">>,
+      fun(_Span) -> do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) end)
+  of
     {{_, 401, _, _}, Client2} ->
       {ok, Client3} = get_access_token(Client2#client{access_token = undefined},
                                       [force_revalidate | Options]),
@@ -212,6 +217,7 @@ request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
 ensure_client_has_access_token(Client0, Options) ->
   case Client0 of
     #client{access_token = undefined} ->
+      ?add_event(<<"no access_token">>, []),
       {ok, Client} = get_access_token(Client0, Options),
       Client;
     _ ->
@@ -219,11 +225,16 @@ ensure_client_has_access_token(Client0, Options) ->
   end.
 
 do_retrieve_access_token(Client, Opts0) ->
+  AuthUrl = Client#client.auth_url,
   Opts = Opts0 -- [return_maps], %% Make sure we get a proplist
   #{headers := RequestHeaders,
     body := RequestBody} = prepare_token_request(Client, Opts),
-  case restc:request(post, percent, Client#client.auth_url,
-                     [200], RequestHeaders, RequestBody, Opts)
+  case
+    ?with_span(
+      <<"oauth2c retrieve access_token">>,
+      fun(_Span) ->
+        restc:request(post, percent, AuthUrl, [200], RequestHeaders, RequestBody, Opts)
+      end)
   of
     {ok, _, Headers, Body} ->
       AccessToken = proplists:get_value(<<"access_token">>, Body),
@@ -237,7 +248,7 @@ do_retrieve_access_token(Client, Opts0) ->
                                          Body,
                                          Client#client.refresh_token),
       Result = #client{ grant_type    = Client#client.grant_type
-                      , auth_url      = Client#client.auth_url
+                      , auth_url      = AuthUrl
                       , access_token  = AccessToken
                       , refresh_token = RefreshToken
                       , token_type    = get_token_type(TokenType)
@@ -374,22 +385,27 @@ retrieve_access_token_fun(Client0, Options) ->
   end.
 
 get_access_token(#client{expire_time = ExpireTime} = Client0, Options) ->
-  case {proplists:get_value(cache_token, Options, false),
-        proplists:get_value(force_revalidate, Options, false)}
-  of
+  CacheToken = proplists:get_value(cache_token, Options, false),
+  ForceRevalidate = proplists:get_value(force_revalidate, Options, false),
+  ?set_attribute(cache_token, CacheToken),
+  ?set_attribute(force_revalidate, ForceRevalidate),
+  case {CacheToken, ForceRevalidate} of
     {false, _} ->
+      ?add_event(<<"fetching new access_token">>, []),
       {ok, _Headers, Client} = do_retrieve_access_token(Client0, Options),
       {ok, Client};
     {true, false} ->
       Key = hash_client(Client0),
       case oauth2c_token_cache:get(Key) of
         {error, not_found} ->
+          ?add_event(<<"fetching new access_token">>, []),
           RevalidateFun = retrieve_access_token_fun(Client0, Options),
           oauth2c_token_cache:set_and_get(Key, RevalidateFun);
         {ok, Client} ->
           {ok, Client}
       end;
     {true, true} ->
+      ?add_event(<<"fetching new access_token">>, []),
       Key = hash_client(Client0),
       RevalidateFun = retrieve_access_token_fun(Client0, Options),
       oauth2c_token_cache:set_and_get(Key, RevalidateFun, ExpireTime)
