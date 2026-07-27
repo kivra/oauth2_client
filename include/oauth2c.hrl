@@ -41,3 +41,8 @@
 -type response()       :: {restc:response(), #client{}}.
 -type token_type()     :: bearer | unsupported.
 -type client()         :: #client{}.
+%% Caller-supplied transport for request_with/4. Receives the auth headers
+%% and performs the actual HTTP request with whatever client it closes over.
+-type request_fun()    :: fun((headers()) ->
+                                {ok, status_code(), headers(), term()} |
+                                {error, reason()}).
