@@ -368,8 +368,8 @@ do_request(Method, Type, Url, Expect, Headers0, Body, Options, Client) ->
 %% timeouts — and returns {ok, Status, RespHeaders, RespBody} for any HTTP
 %% response, or {error, Reason} for transport errors. On a 401 response the
 %% token is refreshed and RequestFun is called once more. The status is
-%% classified against Expect and the same {response(), client()} shape as
-%% request/8 is returned.
+%% classified against Expect and a response() is returned, as with
+%% request/8.
 -spec request_with(RequestFun, Expect, Options, Client) -> response() when
     RequestFun :: request_fun(),
     Expect     :: status_codes(),
@@ -382,10 +382,10 @@ request_with(RequestFun, Expect, Options, Client0) ->
       <<"oauth2c request">>,
       fun(_Span) -> do_request_with(RequestFun, Expect, Client1) end)
   of
-    {{_, 401, _, _}, _} ->
-      {ok, Client2} = get_access_token(Client1#client{access_token = undefined},
+    {{_, 401, _, _}, Client2} ->
+      {ok, Client3} = get_access_token(Client2#client{access_token = undefined},
                                        [force_revalidate | Options]),
-      do_request_with(RequestFun, Expect, Client2);
+      do_request_with(RequestFun, Expect, Client3);
     Result ->
       Result
   end.

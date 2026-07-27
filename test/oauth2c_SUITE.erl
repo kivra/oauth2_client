@@ -48,6 +48,9 @@ init_per_testcase(retrieve_cached_token_on_401_burst, Config) ->
 init_per_testcase(retrieve_cached_token_on_401, Config) ->
   mock_http_request_401(),
   Config;
+init_per_testcase(request_with_fun_refreshes_token_on_401, Config) ->
+  mock_http_request_401(),
+  Config;
 init_per_testcase(_TestCase, Config) ->
   mock_http_requests(),
   Config.
@@ -263,23 +266,30 @@ request_with_fun(_Config) ->
                       [post, percent, ?AUTH_URL, '_', '_', '_', '_'])).
 
 request_with_fun_refreshes_token_on_401(_Config) ->
+  % The mocked token endpoint returns token1 on the first fetch and token2
+  % on the refresh, so the retry must carry the refreshed token — reusing
+  % the stale one would fail the header assertion.
   {ok, _, Client} = oauth2c:retrieve_access_token(?CLIENT_CREDENTIALS_GRANT,
                                                   ?AUTH_URL,
                                                   <<"ID">>,
                                                   <<"SECRET">>),
   Counter = counters:new(1, []),
-  % First call gets a 401; oauth2c should refresh the token and retry once.
   Fun = fun(Headers) ->
-            ?assertEqual(?HEADERS(?VALID_TOKEN), Headers),
             case counters:get(Counter, 1) of
-              0 -> counters:add(Counter, 1, 1), {ok, 401, [], <<>>};
-              _ -> {ok, 200, [], <<"body">>}
+              0 ->
+                counters:add(Counter, 1, 1),
+                ?assertEqual(?HEADERS(<<"token1">>), Headers),
+                {ok, 401, [], <<>>};
+              _ ->
+                ?assertEqual(?HEADERS(<<"token2">>), Headers),
+                {ok, 200, [], <<"body">>}
             end
         end,
   ?assertEqual(1, meck:num_calls(restc, request,
                                  [post, percent, ?AUTH_URL, '_', '_', '_', '_'])),
   Response = oauth2c:request_with(Fun, [200], [], Client),
-  ?assertMatch({{ok, 200, [], <<"body">>}, _}, Response),
+  ?assertMatch({{ok, 200, [], <<"body">>},
+                #client{access_token = <<"token2">>}}, Response),
   ?assertEqual(2, meck:num_calls(restc, request,
                                  [post, percent, ?AUTH_URL, '_', '_', '_', '_'])).
 
