@@ -35,6 +35,7 @@
 -export([retrieve_access_token/5]).
 -export([retrieve_access_token/6]).
 
+-export([request_with/4]).
 -export([request/3]).
 -export([request/4]).
 -export([request/5]).
@@ -200,11 +201,7 @@ request(Method, Type, Url, Expect, Headers, Body, Client) ->
 
 request(Method, Type, Url, Expect, Headers, Body, Options, Client0) ->
   Client1 = ensure_client_has_access_token(Client0, Options),
-  case
-    ?with_span(
-      <<"oauth2c request">>,
-      fun(_Span) -> do_request(Method,Type,Url,Expect,Headers,Body,Options,Client1) end)
-  of
+  case do_request(Method, Type, Url, Expect, Headers, Body, Options, Client1) of
     {{_, 401, _, _}, Client2} ->
       {ok, Client3} = get_access_token(Client2#client{access_token = undefined},
                                       [force_revalidate | Options]),
@@ -357,7 +354,71 @@ get_str_token_type(_Else) -> unsupported.
 
 do_request(Method, Type, Url, Expect, Headers0, Body, Options, Client) ->
   Headers = add_auth_header(Headers0, Client),
-  {restc:request(Method, Type, Url, Expect, Headers, Body, Options), Client}.
+  ?with_span(
+    <<"oauth2c request">>,
+    fun(SpanCtx) ->
+      Response = restc:request(Method, Type, Url, Expect, Headers, Body, Options),
+      set_status_code_attribute(SpanCtx, Response),
+      {Response, Client}
+    end).
+
+%% @doc Perform an authenticated request using a caller-supplied request
+%% function, keeping the HTTP transport (hackney, gun, httpc, ...) entirely
+%% on the caller's side. oauth2c fetches/caches the access token and calls
+%% RequestFun with the resulting auth headers; the fun performs the actual
+%% request — closing over its own connection, url, method, body and
+%% timeouts — and returns {ok, Status, RespHeaders, RespBody} for any HTTP
+%% response, or {error, Reason} for transport errors. On a 401 response the
+%% token is refreshed and RequestFun is called once more. The status is
+%% classified against Expect and a response() is returned, as with
+%% request/8.
+-spec request_with(RequestFun, Expect, Options, Client) -> response() when
+    RequestFun :: request_fun(),
+    Expect     :: status_codes(),
+    Options    :: options(),
+    Client     :: client().
+request_with(RequestFun, Expect, Options, Client0) ->
+  Client1 = ensure_client_has_access_token(Client0, Options),
+  case do_request_with(RequestFun, Expect, Client1) of
+    {{_, 401, _, _}, Client2} ->
+      {ok, Client3} = get_access_token(Client2#client{access_token = undefined},
+                                       [force_revalidate | Options]),
+      do_request_with(RequestFun, Expect, Client3);
+    Result ->
+      Result
+  end.
+
+do_request_with(RequestFun, Expect, Client) ->
+  ?with_span(
+    <<"oauth2c request">>,
+    fun(SpanCtx) ->
+      case RequestFun(add_auth_header([], Client)) of
+        {ok, Status, RespHeaders, RespBody} ->
+          set_status_code_attribute(SpanCtx, {ok, Status, RespHeaders, RespBody}),
+          {classify_status(Status, Expect, RespHeaders, RespBody), Client};
+        {error, Reason} ->
+          {{error, Reason}, Client}
+      end
+    end).
+
+%% restc responses carry the status as {ok, Status, _, _} or
+%% {error, Status, _, _}; transport errors ({error, Reason}) have none.
+set_status_code_attribute(SpanCtx, {ok, Status, _Headers, _Body}) ->
+  otel_span:set_attribute(SpanCtx, 'http.response.status_code', Status);
+set_status_code_attribute(SpanCtx, {error, Status, _Headers, _Body})
+  when is_integer(Status) ->
+  otel_span:set_attribute(SpanCtx, 'http.response.status_code', Status);
+set_status_code_attribute(_SpanCtx, _Response) ->
+  ok.
+
+%% Same semantics as restc's check_expect: an empty Expect accepts any status.
+classify_status(Status, [], Headers, Body) ->
+  {ok, Status, Headers, Body};
+classify_status(Status, Expect, Headers, Body) ->
+  case lists:member(Status, Expect) of
+    true  -> {ok, Status, Headers, Body};
+    false -> {error, Status, Headers, Body}
+  end.
 
 add_auth_header(Headers, #client{grant_type = <<"azure_client_credentials">>,
                                  access_token = AccessToken}) ->
