@@ -84,6 +84,14 @@ run() ->
     ok.
 ```
 
+## Google API using Service Account Example
+
+```erlang
+Client = oauth2c:from_service_account_file("service_account_credentials.json", <<"https://www.googleapis.com/auth/androidpublisher">>).
+oauth2c:request(get, json, <<"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.kivra.Kivra/reviews">>, [200], Client).
+
+```
+
 ## License
 The KIVRA oauth2 library uses an [MIT license](http://en.wikipedia.org/wiki/MIT_License). So go ahead and do what
 you want!
